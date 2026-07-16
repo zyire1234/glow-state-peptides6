@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Proxy every /api/* call to the Django backend on Render, so the frontend's
+# existing `fetch('/api/...')` calls keep working unchanged after deploy.
+# Replace the target with your actual Render service URL.
+[[redirects]]
+  from = "/api/*"
+  to = "https://YOUR-RENDER-SERVICE.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+# Single-page app: send every route to index.html so client-side routing
+# (shop / calculator / policies / admin panel) works on direct loads/refreshes.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
