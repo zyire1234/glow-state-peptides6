@@ -8,6 +8,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 
+  root: '.',
+
   plugins: [react(), tailwindcss()],
 
   resolve: {
