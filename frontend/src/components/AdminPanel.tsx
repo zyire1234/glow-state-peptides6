@@ -113,6 +113,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     }
   }, [isAuthenticated, activeTab]);
 
+  // The Django REST Framework endpoints serialize DecimalField values
+  // (price, discount_price, total_amount, order item price) as strings
+  // (e.g. "49.99"), not numbers. Coerce them to real numbers right after
+  // fetching so every .toFixed() call below the app is safe instead of
+  // crashing the whole Admin Panel with a blank screen.
+  const normalizeProducts = (data: any[]): Product[] =>
+    data.map((p) => ({
+      ...p,
+      price: Number(p.price),
+      discount_price:
+        p.discount_price === null || p.discount_price === undefined
+          ? p.discount_price
+          : Number(p.discount_price),
+    }));
+
+  const normalizeOrders = (data: any[]): Order[] =>
+    data.map((o) => ({
+      ...o,
+      total_amount: Number(o.total_amount),
+      items: o.items?.map((it: any) => ({ ...it, price: Number(it.price) })),
+    }));
+
   const fetchAdminData = async () => {
     setLoading(true);
     try {
@@ -122,15 +144,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         const pRes = await fetch(`${API_BASE_URL}/products/`);
         const oRes = await fetch(`${API_BASE_URL}/orders/`, { headers });
         const aRes = await fetch(`${API_BASE_URL}/activities`, { headers });
-        if (pRes.ok) setProducts(await pRes.json());
-        if (oRes.ok) setOrders(await oRes.json());
+        if (pRes.ok) setProducts(normalizeProducts(await pRes.json()));
+        if (oRes.ok) setOrders(normalizeOrders(await oRes.json()));
         if (aRes.ok) setActivities(await aRes.json());
       } else if (activeTab === 'products') {
         const res = await fetch(`${API_BASE_URL}/products/`);
-        if (res.ok) setProducts(await res.json());
+        if (res.ok) setProducts(normalizeProducts(await res.json()));
       } else if (activeTab === 'orders') {
         const res = await fetch(`${API_BASE_URL}/orders/`, { headers });
-        if (res.ok) setOrders(await res.json());
+        if (res.ok) setOrders(normalizeOrders(await res.json()));
       } else if (activeTab === 'activities') {
         const res = await fetch(`${API_BASE_URL}/activities`, { headers });
         if (res.ok) setActivities(await res.json());
@@ -633,7 +655,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                           </span>
                         </div>
                         <div className="text-right">
-                          <p className="font-mono text-white font-bold">${order.total_amount.toFixed(2)}</p>
+                          <p className="font-mono text-white font-bold">${Number(order.total_amount).toFixed(2)}</p>
                           <p className="text-[9px] text-slate-500">{new Date(order.created_at).toLocaleDateString()}</p>
                         </div>
                       </div>
@@ -768,10 +790,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                           </td>
                           <td className="p-4 font-semibold text-white max-w-xs">{prod.name}</td>
                           <td className="p-4">{prod.category}</td>
-                          <td className="p-4 font-mono font-medium">${prod.price.toFixed(2)}</td>
+                          <td className="p-4 font-mono font-medium">${Number(prod.price).toFixed(2)}</td>
                           <td className="p-4">
-                            {prod.is_discounted ? (
-                              <span className="text-emerald-400 font-mono font-bold">${prod.discount_price?.toFixed(2)} <span className="text-[9px] uppercase font-bold text-slate-500">(Active)</span></span>
+                            {prod.is_discounted && prod.discount_price !== null && prod.discount_price !== undefined ? (
+                              <span className="text-emerald-400 font-mono font-bold">${Number(prod.discount_price).toFixed(2)} <span className="text-[9px] uppercase font-bold text-slate-500">(Active)</span></span>
                             ) : (
                               <span className="text-slate-500">None</span>
                             )}
