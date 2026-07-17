@@ -2,27 +2,31 @@ services:
   - type: web
     name: glow-state-peptides-api
     runtime: python
+    rootDir: backend
     plan: free
     buildCommand: "./build.sh"
     startCommand: "gunicorn core.wsgi:application"
+    autoDeploy: true
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_DEBUG
         value: "False"
       - key: DJANGO_ALLOWED_HOSTS
-        value: "*"
+        value: ".onrender.com,localhost,127.0.0.1"
       - key: CORS_ALLOWED_ORIGINS
-        value: "https://your-netlify-site.netlify.app"
+        value: "https://glow-state-peptides6-1.onrender.com"
       - key: ADMIN_DEFAULT_USERNAME
         value: "admin"
       - key: ADMIN_DEFAULT_PASSWORD
         generateValue: true
       - key: EMAIL_ENABLED
         value: "False"
-      - key: DJANGO_DB_PATH
-        value: "/var/data/db.sqlite3"
-    disk:
-      name: sqlite-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: glow-state-peptides-db
+          property: connectionString
+
+databases:
+  - name: glow-state-peptides-db
+    plan: free
