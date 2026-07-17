@@ -92,7 +92,19 @@ export default function App() {
       const res = await fetch(`${API_BASE_URL}/products/`);
       if (res.ok) {
         const data = await res.json();
-        setProducts(data);
+        // The Django REST Framework endpoint serializes DecimalField values
+        // (price, discount_price) as strings (e.g. "49.99"), not numbers.
+        // Coerce them to real numbers here, once, so every .toFixed() call
+        // below the app safely works instead of crashing the whole page.
+        const normalized: Product[] = (data as any[]).map((p) => ({
+          ...p,
+          price: Number(p.price),
+          discount_price:
+            p.discount_price === null || p.discount_price === undefined
+              ? p.discount_price
+              : Number(p.discount_price),
+        }));
+        setProducts(normalized);
       }
     } catch (err) {
       console.error('Error fetching products:', err);
