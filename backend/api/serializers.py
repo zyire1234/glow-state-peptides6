@@ -4,6 +4,11 @@ from .models import Product, Order, OrderItem, Payment
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    discount_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, required=False, allow_null=True
+    )
+
     class Meta:
         model = Product
         fields = [
@@ -16,6 +21,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class OrderItemSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source="product_id_snapshot")
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = OrderItem
@@ -25,6 +31,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
 
     class Meta:
         model = Order
@@ -37,6 +44,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
 
 class PaymentSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+
     class Meta:
         model = Payment
         fields = ["id", "order", "amount", "method", "status", "transaction_id", "created_at"]
