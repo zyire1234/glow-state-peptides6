@@ -152,7 +152,7 @@ export default function App() {
     }, 0);
   };
 
- // Flat-rate shipping fee applied to every order once there's something in the cart.
+  // Flat-rate shipping fee applied to every order once there's something in the cart.
   // Orders over the free-shipping threshold ship free (express).
   const SHIPPING_FEE = 10;
   const FREE_SHIPPING_THRESHOLD = 160;
@@ -160,6 +160,9 @@ export default function App() {
     if (cart.length === 0) return 0;
     return getCartTotal() >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
+
+  // Total the customer actually owes: subtotal + flat shipping fee, automatically
+  // including the 3% PayPal surcharge whenever PayPal is the selected payment route.
   const getOrderTotal = () => {
     const subtotal = getCartTotal() + getShippingFee();
     return paymentMethod === 'paypal_invoice' ? subtotal * 1.03 : subtotal;
@@ -571,8 +574,8 @@ export default function App() {
                       <p><span className="text-slate-500">Account No:</span> {paymentDetails?.account_number || '10013757'}</p>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-                       Please note: your bank may say that Glow State doesn’t match the account name. This is normal. Please continue with the transfer.
-</p>
+                      Note: Glow State operates as a sole trader, so the transfer will show under the account holder's personal name, <strong className="text-slate-300">Tara S.</strong>, rather than "Glow State." Please confirm this matches before transferring, or contact us to verify.
+                    </p>
                   </div>
                   <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
                     Please use your name as the reference and we will match your payment to your order.
@@ -839,16 +842,20 @@ export default function App() {
                         <span>ESTIMATED TOTAL:</span>
                         <span className="text-purple-400">${getCartTotal().toFixed(2)} AUD</span>
                       </div>
-                      <p className="text-[10px] text-slate-500 -mt-2">+ ${SHIPPING_FEE.toFixed(2)} AUD shipping, calculated at checkout</p>
-                      
-                      <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
-        {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
+                      {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
                         <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
                       ) : (
                         <p className="text-[10px] text-slate-500 -mt-2">
                           + ${SHIPPING_FEE.toFixed(2)} AUD shipping, or add ${(FREE_SHIPPING_THRESHOLD - getCartTotal()).toFixed(2)} more for free express shipping
                         </p>
                       )}
+                      
+                      <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
+                        <UserCheck className="h-4 w-4 text-purple-400 shrink-0" />
+                        <span>
+                          No charges apply now. Our administration validates each order request before arranging manual payment instructions.
+                        </span>
+                      </div>
 
                       <button
                         onClick={() => setCheckoutStep('details')}
@@ -906,8 +913,8 @@ export default function App() {
                       <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
                       <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
                       <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
-                          Please note: your bank may say that Glow State doesn’t match the account name. This is normal. Please continue with the transfer.
-</p>
+                        Note: Glow State operates as a sole trader, so the transfer will show under the account holder's personal name, <strong className="text-slate-300">Tara S.</strong>, rather than "Glow State." Please confirm this matches before transferring, or contact us to verify.
+                      </p>
                       <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
                         Please use your name as the reference and we will match your payment to your order.
                       </p>
