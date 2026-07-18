@@ -904,8 +904,8 @@ export default function App() {
                       <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
                       <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
                       <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
-                        Note: Glow State operates as a sole trader, so the transfer will show under the account holder's personal name, <strong className="text-slate-300">Tara S.</strong>, rather than "Glow State." Please confirm this matches before transferring, or contact us to verify.
-                      </p>
+                          Please note: your bank may say that Glow State doesn’t match the account name. This is normal. Please continue with the transfer.
+</p>
                       <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
                         Please use your name as the reference and we will match your payment to your order.
                       </p>
