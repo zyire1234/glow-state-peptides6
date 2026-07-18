@@ -842,12 +842,14 @@ export default function App() {
                       <p className="text-[10px] text-slate-500 -mt-2">+ ${SHIPPING_FEE.toFixed(2)} AUD shipping, calculated at checkout</p>
                       
                       <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
-              {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
+        {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
                         <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
                       ) : (
                         <p className="text-[10px] text-slate-500 -mt-2">
                           + ${SHIPPING_FEE.toFixed(2)} AUD shipping, or add ${(FREE_SHIPPING_THRESHOLD - getCartTotal()).toFixed(2)} more for free express shipping
-                        <
+                        </p>
+                      )}
+
                       <button
                         onClick={() => setCheckoutStep('details')}
                         className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/10 cursor-pointer"
