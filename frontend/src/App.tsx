@@ -152,14 +152,14 @@ export default function App() {
     }, 0);
   };
 
-  // Flat-rate shipping fee applied to every order once there's something in the cart.
+ // Flat-rate shipping fee applied to every order once there's something in the cart.
+  // Orders over the free-shipping threshold ship free (express).
   const SHIPPING_FEE = 10;
+  const FREE_SHIPPING_THRESHOLD = 160;
   const getShippingFee = () => {
-    return cart.length > 0 ? SHIPPING_FEE : 0;
+    if (cart.length === 0) return 0;
+    return getCartTotal() >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
-
-  // Total the customer actually owes: subtotal + flat shipping fee, automatically
-  // including the 3% PayPal surcharge whenever PayPal is the selected payment route.
   const getOrderTotal = () => {
     const subtotal = getCartTotal() + getShippingFee();
     return paymentMethod === 'paypal_invoice' ? subtotal * 1.03 : subtotal;
@@ -842,12 +842,12 @@ export default function App() {
                       <p className="text-[10px] text-slate-500 -mt-2">+ ${SHIPPING_FEE.toFixed(2)} AUD shipping, calculated at checkout</p>
                       
                       <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
-                        <UserCheck className="h-4 w-4 text-purple-400 shrink-0" />
-                        <span>
-                          No charges apply now. Our administration validates each order request before arranging manual payment instructions.
-                        </span>
-                      </div>
-
+              {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
+                        <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 -mt-2">
+                          + ${SHIPPING_FEE.toFixed(2)} AUD shipping, or add ${(FREE_SHIPPING_THRESHOLD - getCartTotal()).toFixed(2)} more for free express shipping
+                        <
                       <button
                         onClick={() => setCheckoutStep('details')}
                         className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/10 cursor-pointer"
