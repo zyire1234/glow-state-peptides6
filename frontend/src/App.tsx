@@ -846,7 +846,7 @@ export default function App() {
                         <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
                       ) : (
                         <p className="text-[10px] text-slate-500 -mt-2">
-                          + ${SHIPPING_FEE.toFixed(2)} AUD shipping, or add ${(FREE_SHIPPING_THRESHOLD - getCartTotal()).toFixed(2)} more for free express shipping
+                          Free Shipping: Enjoy free shipping on all orders over ${FREE_SHIPPING_THRESHOLD}
                         </p>
                       )}
                       
@@ -913,7 +913,8 @@ export default function App() {
                       <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
                       <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
                       <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
-                        Note:your bank may say that Glow State does not match the account name, <strong className="text-slate-300">Tis is normal.</strong>, Please continue with the transfer.
+                        Note:your bank may say that Glow State does not match the account name, <strong className="text-slate-300">This
+                          is normal.</strong>, Please continue with the transfer.
                       </p>
                       <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
                         Please use your name as the reference and we will match your payment to your order.
