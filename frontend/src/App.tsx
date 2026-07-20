@@ -853,7 +853,7 @@ export default function App() {
                       <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
                         <UserCheck className="h-4 w-4 text-purple-400 shrink-0" />
                         <span>
-                          No charges apply now. Our administration validates each order request before arranging manual payment instructions.
+                         Free Shipping: Enjoy free shipping on all orders over $160
                         </span>
                       </div>
 
