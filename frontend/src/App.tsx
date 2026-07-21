@@ -523,9 +523,9 @@ export default function App() {
                   1
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-display font-semibold text-white">Select Vials & Place Order</h3>
+                  <h3 className="font-display font-semibold text-white">Select Vials and Add to Cart</h3>
                   <p className="text-slate-400 text-xs leading-relaxed">
-                    Browse our catalog, choose quantities, and click <strong>"Place Order"</strong> inside the cart. Fill in your name, email, and shipping address details.
+                    Browse our catalog, choose your quantities, and add your items to the cart.
                   </p>
                 </div>
               </div>
@@ -535,13 +535,13 @@ export default function App() {
                   2
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-display font-semibold text-white">Select Your Manual Payment Route</h3>
+                  <h3 className="font-display font-semibold text-white">Enter Your Delivery Address & Select Your Payment Method</h3>
                   <p className="text-slate-400 text-xs leading-relaxed">
-                    Choose between a <strong>Bank Transfer</strong> or requesting a <strong>PayPal Invoice</strong>. 
+                    Choose your preferred payment option:
                   </p>
                   <ul className="list-disc pl-4 text-slate-500 text-xs space-y-1.5 pt-1.5">
-                    <li><strong className="text-slate-300">Bank Transfer route:</strong> Complete manual transfer using details in receipt, then email us the screenshot.</li>
-                    <li><strong className="text-slate-300">PayPal Invoice route:</strong> A manual email invoice containing the pay link will be issued to your mailbox shortly (+3% fee applies).</li>
+                    <li><strong className="text-slate-300">Bank Transfer:</strong> Manually complete your payment via bank transfer, using your order number as reference.</li>
+                    <li><strong className="text-slate-300">Express PayPal:</strong> After entering your shipping details, click "Pay with PayPal" and you'll be taken directly to your PayPal account to complete your payment.</li>
                   </ul>
                 </div>
               </div>
@@ -551,9 +551,9 @@ export default function App() {
                   3
                 </div>
                 <div className="space-y-1">
-                  <h3 className="font-display font-semibold text-white">Immediate Dispatch Validation</h3>
+                  <h3 className="font-display font-semibold text-white">Immediate Dispatch</h3>
                   <p className="text-slate-400 text-xs leading-relaxed">
-                    Once our administration logs manual payment receipt confirmation, we package and ship your laboratory materials within 24 hours. Express Tracking numbers are issued directly via email.
+                    We will package and dispatch your laboratory compounds within 24 hours. Express tracking information will be issued directly via email.
                   </p>
                 </div>
               </div>
@@ -577,7 +577,7 @@ export default function App() {
                     </p>
                   </div>
                   <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
-                    Please use your name as the reference and we will match your payment to your order.
+                    Please use your order number as the reference and we will match your payment to your order.
                   </p>
                 </div>
                 <div className="flex flex-col justify-between">
@@ -899,7 +899,6 @@ export default function App() {
                       }`}
                     >
                       <span className="font-semibold text-xs">PayPal</span>
-                      <span className="text-[9px] font-normal">(+3% fee)</span>
                     </button>
                   </div>
 
@@ -916,7 +915,7 @@ export default function App() {
                           is normal.</strong>, Please continue with the transfer.
                       </p>
                       <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
-                        Please use your name as the reference and we will match your payment to your order.
+                        Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
                   ) : (
@@ -1062,7 +1061,7 @@ export default function App() {
                       <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
                       <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
                       <p className="font-bold text-yellow-400">
-                        Please use your name as the reference and we will match your payment to your order.
+                        Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
                   ) : placedOrder.status === 'paid' ? (
