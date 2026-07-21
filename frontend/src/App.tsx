@@ -584,11 +584,8 @@ export default function App() {
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                      <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider">PayPal Invoice Details</h4>
+                      <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider">PayPal</h4>
                     </div>
-                    <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                      Submit details via the checkout drawer and our admin team will generate and dispatch a direct payment link invoice.
-                    </p>
                   </div>
                   <div className="bg-purple-900/10 p-3.5 rounded-xl border border-purple-500/20 text-[11px] text-purple-300 leading-relaxed">
                     <strong>PayPal Notice:</strong> A 3% merchant processing surcharge applies to all PayPal invoices to cover administration overheads.
