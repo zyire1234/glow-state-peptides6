@@ -109,11 +109,7 @@ export function PayPalButton({ clientId, orderId, onSuccess, onError }: PayPalBu
   }, [clientId, orderId]);
 
   if (!clientId) {
-    return (
-      <div className="text-[11px] text-yellow-400 bg-yellow-950/20 border border-yellow-800/30 rounded-xl p-3">
-        PayPal checkout isn't configured on the server yet (missing PayPal Client ID). Please use Bank Transfer or contact us to complete payment.
-      </div>
-    );
+    return null;
   }
 
   return (
