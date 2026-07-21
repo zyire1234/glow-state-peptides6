@@ -6,7 +6,6 @@ import {
 import { Logo } from './components/Logo';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
-import { PayPalButton } from './components/PayPalButton';
 import { API_BASE_URL } from './lib/apiConfig';
 // Connected to the real Django + SQLite backend. All `/api/...` calls below
 // use the browser's native `fetch` and are routed to the backend via the
@@ -1079,26 +1078,14 @@ export default function App() {
                   ) : (
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
                       <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
-                      <p>Complete your payment of <strong>${Number(placedOrder.total_amount).toFixed(2)} AUD</strong> securely with PayPal below.</p>
-                      <PayPalButton
-                        clientId={paymentDetails?.paypal_client_id || ''}
-                        orderId={placedOrder.id}
-                        onSuccess={(updatedOrder) => {
-                          setPlacedOrder(updatedOrder);
-                          setPaypalError('');
-                        }}
-                        onError={(msg) => setPaypalError(msg)}
-                      />
-                      {paypalError && (
-                        <p className="text-[11px] text-red-400">{paypalError}</p>
-                      )}
+                      <p>Complete your payment of <strong>${Number(placedOrder.total_amount).toFixed(2)} AUD</strong> securely with PayPal.</p>
                       <a
                         href={getPaypalPayUrl(placedOrder.total_amount)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 rounded-xl text-[11px] transition-all"
+                        className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:brightness-105 text-slate-900 font-bold rounded-xl text-sm transition-all shadow-lg shadow-yellow-500/10"
                       >
-                        Or pay manually via PayPal.me link
+                        Pay with PayPal
                       </a>
                     </div>
                   )}
