@@ -64,6 +64,14 @@ export default function App() {
   const [placedOrder, setPlacedOrder] = useState<any>(null);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [paypalError, setPaypalError] = useState<string>('');
+  // True while we're still waiting on the very first successful response from
+  // the backend. Render's free-tier server "sleeps" after ~15 minutes of no
+  // traffic and takes 30-60s to wake back up on the next request. Without this
+  // flag, a sleeping backend makes payment/bank details silently fall back to
+  // hardcoded placeholder text (e.g. "Glow State" / "Commonwealth Bank"),
+  // which looks exactly like saved admin changes were lost — they weren't,
+  // the request just hasn't succeeded yet.
+  const [backendWakingUp, setBackendWakingUp] = useState<boolean>(true);
 
   useEffect(() => {
     fetchProducts();
@@ -73,15 +81,28 @@ export default function App() {
     fetchPaymentDetails();
   }, [isAdminOpen]); // Refetch in case admin updated bank/PayPal details
 
-  const fetchPaymentDetails = async () => {
+  const fetchPaymentDetails = async (attempt = 0) => {
     try {
       const res = await fetch(`${API_BASE_URL}/payment-details`);
       if (res.ok) {
         const data = await res.json();
         setPaymentDetails(data);
+        setBackendWakingUp(false);
+        return;
       }
+      throw new Error(`Payment details request failed with status ${res.status}`);
     } catch (err) {
       console.error('Error fetching payment details:', err);
+      // Retry a few times with backoff to ride out a cold-starting backend
+      // instead of immediately showing placeholder defaults as if they were real.
+      if (attempt < 5) {
+        const delayMs = Math.min(3000 * (attempt + 1), 12000);
+        setTimeout(() => fetchPaymentDetails(attempt + 1), delayMs);
+      } else {
+        // Give up treating this as "still waking up" after ~5 retries so the
+        // UI doesn't spin forever if the backend is genuinely down.
+        setBackendWakingUp(false);
+      }
     }
   };
 
@@ -516,6 +537,13 @@ export default function App() {
               <p className="text-slate-400 text-xs">Our system is manual and transparent. No online credit card charges will occur.</p>
             </div>
 
+            {backendWakingUp && (
+              <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-3.5 text-xs text-blue-300 flex items-center gap-2.5">
+                <div className="h-3.5 w-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                <span>Reconnecting to server… the bank and PayPal details below may briefly show placeholder text until this finishes.</span>
+              </div>
+            )}
+
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 md:p-8 space-y-8 backdrop-blur-sm relative overflow-hidden shadow-2xl">
               <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 blur-3xl pointer-events-none" />
               <div className="flex gap-4 items-start relative z-10">
@@ -849,7 +877,7 @@ export default function App() {
                       <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
                         <UserCheck className="h-4 w-4 text-purple-400 shrink-0" />
                         <span>
-                         Free Shipping: Enjoy free shipping on all orders over $160
+                         $10 Express shipping added at checkout or free over $160
                         </span>
                       </div>
 
@@ -871,6 +899,13 @@ export default function App() {
                     <h4 className="font-display font-semibold text-white uppercase text-xs tracking-wider">Select Payment Route</h4>
                     <p className="text-slate-500 text-[10px]">Verify how you want to complete payment after validation.</p>
                   </div>
+
+                  {backendWakingUp && (
+                    <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-3 text-[11px] text-blue-300 flex items-center gap-2">
+                      <div className="h-3 w-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                      <span>Reconnecting to server… payment details below may briefly show placeholder text.</span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
