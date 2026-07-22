@@ -192,6 +192,12 @@ PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "")
 # ---------------------------------------------------------------------------
 if not DEBUG:
     SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SSL_REDIRECT", "True").lower() == "true"
+    # Tell Django to trust Render's "X-Forwarded-Proto" header so it correctly
+    # recognizes real HTTPS requests (Render terminates TLS at the edge and
+    # forwards internally as plain HTTP). Without this, Django thinks every
+    # request — including Render's own health checks — is insecure and
+    # 301-redirects it, which can cause repeated service restarts.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
