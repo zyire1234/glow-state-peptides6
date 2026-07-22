@@ -3,7 +3,7 @@ services:
     name: glow-state-peptides-api
     runtime: python
     rootDir: backend
-    plan: free
+    plan: standard
     buildCommand: "./build.sh"
     startCommand: "gunicorn core.wsgi:application"
     autoDeploy: true
@@ -29,4 +29,4 @@ services:
 
 databases:
   - name: glow-state-peptides-db
-    plan: free
+    plan: basic-256mb
