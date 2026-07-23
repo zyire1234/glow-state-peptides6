@@ -931,6 +931,7 @@ export default function App() {
                       }`}
                     >
                       <span className="font-semibold text-xs">PayPal</span>
+                      <span className="text-[9px] font-normal">Express card and Apple Pay options available</span>
                     </button>
                   </div>
 
