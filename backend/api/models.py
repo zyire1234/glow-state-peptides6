@@ -43,6 +43,15 @@ class Product(models.Model):
     stock = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # --- Product Certificate (COA) — additive, admin-managed -------------
+    # Stored directly in the database as base64 text so it works out of the
+    # box on Render without needing S3 or a persistent disk. Nullable/blank
+    # so existing products are unaffected until an admin uploads a file.
+    certificate_data = models.TextField(null=True, blank=True)
+    certificate_filename = models.CharField(max_length=255, null=True, blank=True)
+    certificate_content_type = models.CharField(max_length=100, null=True, blank=True)
+    certificate_uploaded_at = models.DateTimeField(null=True, blank=True)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -56,6 +65,7 @@ class Product(models.Model):
             "category": self.category,
             "stock": self.stock,
             "created_at": self.created_at.isoformat(),
+            "has_certificate": bool(self.certificate_data),
         }
 
 
