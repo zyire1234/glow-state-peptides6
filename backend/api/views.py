@@ -1,3 +1,5 @@
+import base64
+import binascii
 import json
 from datetime import timedelta
 
@@ -5,12 +7,14 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Sum, Count, F
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from rest_framework import viewsets, mixins
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
@@ -613,6 +617,82 @@ class ProductViewSet(viewsets.ModelViewSet):
         name = instance.name
         instance.delete()
         log_activity("product_deleted", f"Admin deleted product: {name}")
+
+    # -----------------------------------------------------------------
+    # Product Certificate (COA) — additive feature.
+    # GET    /api/products/<id>/certificate/  -> public, serves the file
+    #        (only used when has_certificate is true; 404 otherwise)
+    # POST   /api/products/<id>/certificate/  -> admin only, upload/replace
+    #        body: { "filename": str, "content_type": str, "data": base64 }
+    # DELETE /api/products/<id>/certificate/  -> admin only, removes it
+    # Permission handling is identical to the rest of this viewset
+    # (IsAdminOrReadOnly): GET is public, POST/DELETE require an admin
+    # Bearer token.
+    # -----------------------------------------------------------------
+    @action(detail=True, methods=["get", "post", "delete"], url_path="certificate")
+    def certificate(self, request, pk=None):
+        product = self.get_object()
+
+        if request.method == "GET":
+            if not product.certificate_data:
+                return Response({"error": "No certificate uploaded for this product."}, status=404)
+            try:
+                file_bytes = base64.b64decode(product.certificate_data)
+            except (binascii.Error, ValueError):
+                return Response({"error": "Stored certificate data is corrupted."}, status=500)
+            response = HttpResponse(
+                file_bytes,
+                content_type=product.certificate_content_type or "application/octet-stream",
+            )
+            filename = product.certificate_filename or f"certificate-{product.id}"
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            return response
+
+        if request.method == "POST":
+            data = request.data or {}
+            b64_data = data.get("data")
+            filename = data.get("filename") or "certificate"
+            content_type = data.get("content_type") or "application/octet-stream"
+
+            if not b64_data:
+                return Response({"error": "Certificate file data is required."}, status=400)
+
+            # Strip a data: URL prefix if the frontend sent one (e.g. from
+            # FileReader.readAsDataURL), leaving just the base64 payload.
+            if "," in b64_data and b64_data.strip().startswith("data:"):
+                b64_data = b64_data.split(",", 1)[1]
+
+            try:
+                decoded = base64.b64decode(b64_data)
+            except (binascii.Error, ValueError):
+                return Response({"error": "Certificate data is not valid base64."}, status=400)
+
+            max_bytes = 10 * 1024 * 1024  # 10MB
+            if len(decoded) > max_bytes:
+                return Response({"error": "Certificate file is too large (10MB max)."}, status=400)
+
+            product.certificate_data = b64_data
+            product.certificate_filename = filename
+            product.certificate_content_type = content_type
+            product.certificate_uploaded_at = timezone.now()
+            product.save(update_fields=[
+                "certificate_data", "certificate_filename",
+                "certificate_content_type", "certificate_uploaded_at",
+            ])
+            log_activity("certificate_uploaded", f"Admin uploaded a certificate for product: {product.name}")
+            return Response(ProductSerializer(product).data, status=200)
+
+        # DELETE
+        product.certificate_data = None
+        product.certificate_filename = None
+        product.certificate_content_type = None
+        product.certificate_uploaded_at = None
+        product.save(update_fields=[
+            "certificate_data", "certificate_filename",
+            "certificate_content_type", "certificate_uploaded_at",
+        ])
+        log_activity("certificate_deleted", f"Admin deleted the certificate for product: {product.name}")
+        return Response(ProductSerializer(product).data, status=200)
 
 
 class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
