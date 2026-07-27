@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
-  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart
+  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
@@ -22,6 +22,7 @@ interface Product {
   discount_price?: number;
   category: string;
   stock: number;
+  has_certificate?: boolean;
 }
 
 interface CartItem {
@@ -753,7 +754,19 @@ export default function App() {
               <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-4 space-y-2 relative z-10">
                 <h4 className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compound Profile Data</h4>
                 <div className="grid grid-cols-2 gap-3 text-[11px]">
-                  <p className="text-slate-400">Purity Grade: <strong className="text-white">99.8% Premium</strong></p>
+                  <div className="text-slate-400 space-y-1.5">
+                    <p>Purity Grade: <strong className="text-white">99.8% Premium</strong></p>
+                    {selectedProduct.has_certificate && (
+                      <a
+                        href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
+                      >
+                        COA <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
                   <p className="text-slate-400">Vial Formulation: <strong className="text-white">Lyophilized Powder</strong></p>
                   <p className="text-slate-400">Recommended Temp: <strong className="text-white">Refrigerate (2-8°C)</strong></p>
                   <p className="text-slate-400">Reconstitution Sol: <strong className="text-white">Bacteriostatic Water</strong></p>
