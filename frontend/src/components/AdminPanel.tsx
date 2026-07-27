@@ -18,6 +18,7 @@ interface Product {
   discount_price?: number;
   category: string;
   stock: number;
+  has_certificate?: boolean;
 }
 
 interface OrderItem {
@@ -88,6 +89,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     category: 'Healing & Recovery',
     stock: 20
   });
+
+  // Product Certificate (COA) upload state — additive
+  const [certUploading, setCertUploading] = useState<boolean>(false);
+  const [certError, setCertError] = useState<string>('');
 
   // Selected email for visual preview modal
   const [selectedEmail, setSelectedEmail] = useState<SimulatedEmail | null>(null);
@@ -249,6 +254,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       category: 'Healing & Recovery',
       stock: 20
     });
+    setCertError('');
     setShowProductModal(true);
   };
 
@@ -265,6 +271,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       category: prod.category,
       stock: prod.stock
     });
+    setCertError('');
     setShowProductModal(true);
   };
 
@@ -311,6 +318,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       }
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Product Certificate (COA) actions — additive, requires an existing product
+  const uploadCertificate = async (file: File) => {
+    if (!editingProduct) return;
+    setCertUploading(true);
+    setCertError('');
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Could not read the selected file.'));
+        reader.readAsDataURL(file);
+      });
+      const base64Data = dataUrl.split(',')[1] || '';
+
+      const res = await fetch(`${API_BASE_URL}/products/${editingProduct.id}/certificate/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'application/octet-stream',
+          data: base64Data
+        })
+      });
+
+      if (res.ok) {
+        setEditingProduct({ ...editingProduct, has_certificate: true });
+        fetchAdminData();
+      } else {
+        const err = await res.json();
+        setCertError(err.error || 'Failed to upload certificate.');
+      }
+    } catch (err) {
+      setCertError('Network failure uploading certificate.');
+    } finally {
+      setCertUploading(false);
+    }
+  };
+
+  const deleteCertificate = async () => {
+    if (!editingProduct) return;
+    if (!confirm('Are you sure you want to delete this certificate?')) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/products/${editingProduct.id}/certificate/`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setEditingProduct({ ...editingProduct, has_certificate: false });
+        fetchAdminData();
+      } else {
+        setCertError('Could not delete certificate.');
+      }
+    } catch (err) {
+      setCertError('Network failure deleting certificate.');
     }
   };
 
@@ -1055,6 +1122,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-mono"
                 />
               </div>
+
+              {editingProduct && (
+                <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-3 space-y-2">
+                  <label className="block text-slate-400 font-semibold uppercase tracking-wider">
+                    Certificate of Analysis (COA)
+                  </label>
+
+                  {editingProduct.has_certificate ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <a
+                        href={`${API_BASE_URL}/products/${editingProduct.id}/certificate/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-semibold"
+                      >
+                        View Current Certificate
+                      </a>
+                      <label className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
+                        {certUploading ? 'Uploading…' : 'Replace'}
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*"
+                          className="hidden"
+                          disabled={certUploading}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) uploadCertificate(file);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={deleteCertificate}
+                        disabled={certUploading}
+                        className="py-2 px-3 bg-slate-800 hover:bg-rose-900/60 text-rose-400 rounded-lg text-[11px] font-semibold"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-block py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
+                      {certUploading ? 'Uploading…' : 'Upload Certificate'}
+                      <input
+                        type="file"
+                        accept="application/pdf,image/*"
+                        className="hidden"
+                        disabled={certUploading}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) uploadCertificate(file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+
+                  {certError && <p className="text-rose-400 text-[11px]">{certError}</p>}
+                  <p className="text-slate-500 text-[10px]">
+                    Accepted: PDF or image. Shown as a "View Certificate" button on the product page once uploaded.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4 border-t border-slate-800/80 pt-4">
                 <div>
