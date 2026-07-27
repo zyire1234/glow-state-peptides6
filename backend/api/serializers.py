@@ -8,15 +8,19 @@ class ProductSerializer(serializers.ModelSerializer):
     discount_price = serializers.DecimalField(
         max_digits=10, decimal_places=2, coerce_to_string=False, required=False, allow_null=True
     )
+    has_certificate = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             "id", "name", "description", "price", "image_url",
             "is_best_selling", "is_discounted", "discount_price",
-            "category", "stock", "created_at",
+            "category", "stock", "created_at", "has_certificate",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "created_at", "has_certificate"]
+
+    def get_has_certificate(self, obj):
+        return bool(obj.certificate_data)
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
