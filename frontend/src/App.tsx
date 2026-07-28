@@ -755,7 +755,7 @@ export default function App() {
                 <h4 className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compound Profile Data</h4>
                 <div className="grid grid-cols-2 gap-3 text-[11px]">
                   <div className="text-slate-400 space-y-1.5">
-                    <p>Purity Grade: <strong className="text-white">99.8% Premium</strong></p>
+                    <p>Purity Grade: <strong className="text-white">99% Premium</strong></p>
                     {selectedProduct.has_certificate && (
                       <a
                         href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
