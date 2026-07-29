@@ -120,9 +120,11 @@ STORAGES = {
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Product Certificate (COA) uploads are sent as base64 JSON (~33% larger
-# than the original file). Raise Django's default 2.5MB request body limit
-# so a certificate file up to ~10MB can be uploaded.
-DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", 15 * 1024 * 1024))
+# than the original file). Certificates are capped at 5MB in views.py, so
+# ~7MB comfortably covers the base64 overhead without letting a single
+# request buffer an oversized body in memory (kept modest since the web
+# service instance runs with a tight RAM ceiling).
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.environ.get("DJANGO_DATA_UPLOAD_MAX_MEMORY_SIZE", 7 * 1024 * 1024))
 
 # ---------------------------------------------------------------------------
 # Django REST Framework — powers the /api/products/, /api/orders/,
