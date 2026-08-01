@@ -179,7 +179,7 @@ export default function App() {
   const FREE_SHIPPING_THRESHOLD = 160;
   const getShippingFee = () => {
     if (cart.length === 0) return 0;
-    return getCartTotal() >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    return getCartTotal() > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
 
   // Total the customer actually owes: subtotal + flat shipping fee, automatically
@@ -879,7 +879,7 @@ export default function App() {
                         <span>ESTIMATED TOTAL:</span>
                         <span className="text-purple-400">${getCartTotal().toFixed(2)} AUD</span>
                       </div>
-                      {getCartTotal() >= FREE_SHIPPING_THRESHOLD ? (
+                      {getCartTotal() > FREE_SHIPPING_THRESHOLD ? (
                         <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
                       ) : (
                         <p className="text-[10px] text-slate-500 -mt-2">
