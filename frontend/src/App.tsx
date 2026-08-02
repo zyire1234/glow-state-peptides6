@@ -622,7 +622,7 @@ export default function App() {
                 </div>
               </div>
 
-              <a
+              
                 href={getPaypalPayUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -695,6 +695,12 @@ export default function App() {
               </p>
               <p>Brisbane, Australia</p>
               <p className="text-[10px] text-slate-600">Australia-wide Tracked Shipping</p>
+              <p className="flex items-center gap-1.5 text-slate-400 pt-1">
+                <svg viewBox="0 0 448 512" className="h-3.5 w-3.5 fill-purple-400" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"/>
+                </svg>
+                <a href="https://www.tiktok.com/@blessedtides1" target="_blank" rel="noopener noreferrer" className="hover:underline">@blessedtides1</a>
+              </p>
             </div>
           </div>
 
@@ -757,7 +763,7 @@ export default function App() {
                   <div className="text-slate-400 space-y-1.5">
                     <p>Purity Grade: <strong className="text-white">99% Premium</strong></p>
                     {selectedProduct.has_certificate && (
-                      <a
+                      
                         href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
                         target="_blank"
                         rel="noreferrer"
@@ -1123,7 +1129,7 @@ export default function App() {
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
                       <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
                       <p>Complete your payment of <strong>${Number(placedOrder.total_amount).toFixed(2)} AUD</strong> securely with PayPal.</p>
-                      <a
+                      
                         href={getPaypalPayUrl(placedOrder.total_amount)}
                         target="_blank"
                         rel="noopener noreferrer"
