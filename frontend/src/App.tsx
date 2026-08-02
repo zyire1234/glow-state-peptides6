@@ -622,7 +622,7 @@ export default function App() {
                 </div>
               </div>
 
-              
+              <a
                 href={getPaypalPayUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -763,7 +763,7 @@ export default function App() {
                   <div className="text-slate-400 space-y-1.5">
                     <p>Purity Grade: <strong className="text-white">99% Premium</strong></p>
                     {selectedProduct.has_certificate && (
-                      
+                      <a
                         href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
                         target="_blank"
                         rel="noreferrer"
@@ -1129,7 +1129,7 @@ export default function App() {
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
                       <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
                       <p>Complete your payment of <strong>${Number(placedOrder.total_amount).toFixed(2)} AUD</strong> securely with PayPal.</p>
-                      
+                      <a
                         href={getPaypalPayUrl(placedOrder.total_amount)}
                         target="_blank"
                         rel="noopener noreferrer"
