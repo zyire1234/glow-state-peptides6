@@ -124,5 +124,7 @@ class Command(BaseCommand):
             details.account_number = "10013757"
             details.paypal_email = "Glowstatepeps@hotmail.com"
             details.paypal_client_id = settings.PAYPAL_CLIENT_ID
+            details.payid_number = "0491186505"
+            details.payid_name = "T Amos"
             details.save()
             self.stdout.write(self.style.SUCCESS("Seeded default payment details."))
