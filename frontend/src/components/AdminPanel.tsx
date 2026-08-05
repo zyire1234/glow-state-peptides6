@@ -1131,7 +1131,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
 
                   {editingProduct.has_certificate ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      
+                      <a
                         href={`${API_BASE_URL}/products/${editingProduct.id}/certificate/`}
                         target="_blank"
                         rel="noreferrer"
