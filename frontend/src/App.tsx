@@ -193,19 +193,18 @@ export default function App() {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  // Builds a direct PayPal payment redirect link using the business email.
-  // Opening this link sends the customer straight to PayPal to pay Glow State Peptides.
+  // Builds a PayPal.me payment link for the Glow State Peptides account.
+  // PayPal.me replaces the old cgi-bin/webscr "Website Payments Standard"
+  // redirect, which PayPal has discontinued for most modern accounts (it now
+  // shows a "Things don't appear to be working" error instead of checkout).
+  const PAYPAL_ME_USERNAME = 'GlowStatePeptide';
   const getPaypalPayUrl = (amount?: number) => {
-    const params = new URLSearchParams({
-      cmd: '_xclick',
-      business: paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com',
-      item_name: 'Glow State Peptides Order',
-      currency_code: 'AUD',
-    });
+    const base = `https://www.paypal.com/paypalme/${PAYPAL_ME_USERNAME}`;
     if (amount && amount > 0) {
-      params.set('amount', amount.toFixed(2));
+      // PayPal.me supports /<amount>/<currency> in the path.
+      return `${base}/${amount.toFixed(2)}AUD`;
     }
-    return `https://www.paypal.com/cgi-bin/webscr?${params.toString()}`;
+    return base;
   };
 
   // Submit Order Request
