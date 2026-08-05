@@ -72,7 +72,7 @@ class Product(models.Model):
 class Order(models.Model):
     PAYMENT_CHOICES = [
         ("bank_transfer", "Bank Transfer"),
-        ("paypal_invoice", "PayPal Invoice"),
+        ("payid", "PayID"),
     ]
     STATUS_CHOICES = [
         ("pending", "Pending"),
@@ -208,6 +208,16 @@ class PaymentDetails(models.Model):
         default="",
         help_text="Public PayPal REST API client ID (sandbox or live) used to load the JS SDK on the storefront.",
     )
+    payid_number = models.CharField(
+        max_length=40,
+        default="0491186505",
+        help_text="Phone number (or email) registered as the PayID for real-time transfers.",
+    )
+    payid_name = models.CharField(
+        max_length=150,
+        default="T Amos",
+        help_text="Name the customer will see matched to the PayID at their bank.",
+    )
 
     class Meta:
         verbose_name = "Payment Details"
@@ -236,6 +246,8 @@ class PaymentDetails(models.Model):
             "account_number": self.account_number,
             "paypal_email": self.paypal_email,
             "paypal_client_id": self.paypal_client_id,
+            "payid_number": self.payid_number,
+            "payid_name": self.payid_name,
         }
 
 
