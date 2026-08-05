@@ -37,6 +37,8 @@ interface PaymentDetails {
   account_number: string;
   paypal_email: string;
   paypal_client_id: string;
+  payid_number: string;
+  payid_name: string;
 }
 
 export default function App() {
@@ -55,7 +57,7 @@ export default function App() {
 
   // Checkout state
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
-  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'paypal_invoice'>('bank_transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid'>('bank_transfer');
   const [shippingDetails, setShippingDetails] = useState({
     name: '',
     email: '',
@@ -182,29 +184,14 @@ export default function App() {
     return getCartTotal() > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
 
-  // Total the customer actually owes: subtotal + flat shipping fee, automatically
-  // including the 3% PayPal surcharge whenever PayPal is the selected payment route.
+  // Total the customer actually owes: subtotal + flat shipping fee. Neither
+  // Bank Transfer nor PayID carries a surcharge, so no fee is added here.
   const getOrderTotal = () => {
-    const subtotal = getCartTotal() + getShippingFee();
-    return paymentMethod === 'paypal_invoice' ? subtotal * 1.03 : subtotal;
+    return getCartTotal() + getShippingFee();
   };
 
   const getCartCount = () => {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
-  };
-
-  // Builds a PayPal.me payment link for the Glow State Peptides account.
-  // PayPal.me replaces the old cgi-bin/webscr "Website Payments Standard"
-  // redirect, which PayPal has discontinued for most modern accounts (it now
-  // shows a "Things don't appear to be working" error instead of checkout).
-  const PAYPAL_ME_USERNAME = 'GlowStatePeptide';
-  const getPaypalPayUrl = (amount?: number) => {
-    const base = `https://www.paypal.com/paypalme/${PAYPAL_ME_USERNAME}`;
-    if (amount && amount > 0) {
-      // PayPal.me supports /<amount>/<currency> in the path.
-      return `${base}/${amount.toFixed(2)}AUD`;
-    }
-    return base;
   };
 
   // Submit Order Request
@@ -569,7 +556,7 @@ export default function App() {
                   </p>
                   <ul className="list-disc pl-4 text-slate-500 text-xs space-y-1.5 pt-1.5">
                     <li><strong className="text-slate-300">Bank Transfer:</strong> Manually complete your payment via bank transfer, using your order number as reference.</li>
-                    <li><strong className="text-slate-300">Express PayPal:</strong> After entering your shipping details, click "Pay with PayPal" and you'll be taken directly to your PayPal account to complete your payment.</li>
+                    <li><strong className="text-slate-300">PayID:</strong> After entering your shipping details, transfer directly to our PayID using your banking app, with your order number as reference.</li>
                   </ul>
                 </div>
               </div>
@@ -612,23 +599,19 @@ export default function App() {
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <div className="w-2 h-2 rounded-full bg-purple-400"></div>
-                      <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider">PayPal</h4>
+                      <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider">PayID</h4>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">Instant real-time transfer straight to our PayID:</p>
+                    <div className="text-xs text-gray-300 space-y-1.5 font-mono bg-black/40 p-3 rounded-xl border border-white/5">
+                      <p><span className="text-slate-500">PayID:</span> {paymentDetails?.payid_number || '0491186505'}</p>
+                      <p><span className="text-slate-500">Name:</span> {paymentDetails?.payid_name || 'T Amos'}</p>
                     </div>
                   </div>
-                  <div className="bg-purple-900/10 p-3.5 rounded-xl border border-purple-500/20 text-[11px] text-purple-300 leading-relaxed">
-                    <strong>PayPal Notice:</strong> A 3% merchant processing surcharge applies to all PayPal invoices to cover administration overheads.
-                  </div>
+                  <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
+                    Please use your order number as the reference and we will match your payment to your order.
+                  </p>
                 </div>
               </div>
-
-              <a
-                href={getPaypalPayUrl()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3.5 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:brightness-105 text-slate-900 font-bold rounded-xl text-sm transition-all shadow-lg shadow-yellow-500/10 relative z-10"
-              >
-                Pay with PayPal
-              </a>
             </div>
           </div>
         )}
@@ -941,15 +924,15 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('paypal_invoice')}
+                      onClick={() => setPaymentMethod('payid')}
                       className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
-                        paymentMethod === 'paypal_invoice'
+                        paymentMethod === 'payid'
                           ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
                           : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
                       }`}
                     >
-                      <span className="font-semibold text-xs">PayPal</span>
-                      <span className="text-[9px] font-normal">Express card and Apple Pay options available</span>
+                      <span className="font-semibold text-xs">PayID</span>
+                      <span className="text-[9px] font-normal">Instant real-time bank transfer</span>
                     </button>
                   </div>
 
@@ -969,11 +952,15 @@ export default function App() {
                       </p>
                     </div>
                   ) : (
-                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-2 text-slate-300 leading-relaxed">
-                      <h5 className="font-bold text-purple-300">Pay with PayPal</h5>
-                      <p>A 3% PayPal fee applies to cover manual merchant overhead. Enter your delivery details below, then place your order to proceed to payment.</p>
-                      <p className="font-mono font-bold text-white text-sm pt-1">
-                        Total with fee: <span className="text-purple-400">${getOrderTotal().toFixed(2)} AUD</span>
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-purple-300">Pay with PayID</h5>
+                      <p><strong>PayID:</strong> {paymentDetails?.payid_number || '0491186505'}</p>
+                      <p><strong>Name:</strong> {paymentDetails?.payid_name || 'T Amos'}</p>
+                      <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
+                        Enter your delivery details below, then place your order and transfer via your banking app using the PayID above.
+                      </p>
+                      <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
+                        Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
                   )}
@@ -1054,12 +1041,6 @@ export default function App() {
                         <span>Shipping</span>
                         <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
                       </div>
-                      {paymentMethod === 'paypal_invoice' && (
-                        <div className="flex justify-between text-slate-400">
-                          <span>PayPal Fee (3%)</span>
-                          <span className="font-mono">${((getCartTotal() + getShippingFee()) * 0.03).toFixed(2)} AUD</span>
-                        </div>
-                      )}
                       <div className="flex justify-between font-mono font-bold text-white text-sm pt-1.5 border-t border-white/10">
                         <span>Total</span>
                         <span className="text-purple-400">${getOrderTotal().toFixed(2)} AUD</span>
@@ -1103,7 +1084,17 @@ export default function App() {
                     <p><strong className="text-slate-500">Chosen route:</strong> <span className="text-slate-300 uppercase">{placedOrder.payment_method.replace('_', ' ')}</span></p>
                   </div>
 
-                  {placedOrder.payment_method === 'bank_transfer' ? (
+                  {placedOrder.status === 'paid' ? (
+                    <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
+                      <h4 className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Check className="h-4 w-4" /> Payment Received
+                      </h4>
+                      <p>Your payment was successfully processed.</p>
+                      {placedOrder.transaction_id && (
+                        <p className="font-mono text-[11px] text-slate-400">Transaction ID: {placedOrder.transaction_id}</p>
+                      )}
+                    </div>
+                  ) : placedOrder.payment_method === 'bank_transfer' ? (
                     <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-4 text-left space-y-2 leading-relaxed">
                       <h4 className="font-bold text-blue-300">Action Required: Complete Bank Transfer</h4>
                       <p><strong>Account Name:</strong> {paymentDetails?.account_name || 'Glow State'}</p>
@@ -1114,28 +1105,15 @@ export default function App() {
                         Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
-                  ) : placedOrder.status === 'paid' ? (
-                    <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
-                      <h4 className="font-bold text-emerald-300 flex items-center gap-1.5">
-                        <Check className="h-4 w-4" /> Payment Received
-                      </h4>
-                      <p>Your PayPal payment was successfully processed.</p>
-                      {placedOrder.transaction_id && (
-                        <p className="font-mono text-[11px] text-slate-400">Transaction ID: {placedOrder.transaction_id}</p>
-                      )}
-                    </div>
                   ) : (
-                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
-                      <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
-                      <p>Complete your payment of <strong>${Number(placedOrder.total_amount).toFixed(2)} AUD</strong> securely with PayPal.</p>
-                      <a
-                        href={getPaypalPayUrl(placedOrder.total_amount)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:brightness-105 text-slate-900 font-bold rounded-xl text-sm transition-all shadow-lg shadow-yellow-500/10"
-                      >
-                        Pay with PayPal
-                      </a>
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
+                      <h4 className="font-bold text-purple-300">Action Required: Pay via PayID</h4>
+                      <p><strong>PayID:</strong> {paymentDetails?.payid_number || '0491186505'}</p>
+                      <p><strong>Name:</strong> {paymentDetails?.payid_name || 'T Amos'}</p>
+                      <p><strong>Amount:</strong> ${Number(placedOrder.total_amount).toFixed(2)} AUD</p>
+                      <p className="font-bold text-yellow-400">
+                        Please use your order number as the reference and we will match your payment to your order.
+                      </p>
                     </div>
                   )}
 
