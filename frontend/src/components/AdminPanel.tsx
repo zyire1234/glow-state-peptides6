@@ -33,7 +33,7 @@ interface Order {
   customer_name: string;
   customer_email: string;
   customer_address: string;
-  payment_method: 'bank_transfer' | 'paypal_invoice';
+  payment_method: 'bank_transfer' | 'payid';
   status: 'pending' | 'invoice_sent' | 'paid' | 'shipped' | 'cancelled';
   total_amount: number;
   created_at: string;
@@ -659,7 +659,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     </div>
                   </div>
                   <h3 className="font-mono text-2xl font-bold text-white relative z-10">{getPendingRequestCount()}</h3>
-                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Awaiting bank proof/PayPal issue</p>
+                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Awaiting bank proof/PayID issue</p>
                 </div>
 
                 <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-xl relative overflow-hidden backdrop-blur-sm">
@@ -1131,7 +1131,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
 
                   {editingProduct.has_certificate ? (
                     <div className="flex flex-wrap items-center gap-2">
-                      <a
+                      
                         href={`${API_BASE_URL}/products/${editingProduct.id}/certificate/`}
                         target="_blank"
                         rel="noreferrer"
