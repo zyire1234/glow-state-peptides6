@@ -932,7 +932,7 @@ export default function App() {
                       }`}
                     >
                       <span className="font-semibold text-xs">PayID</span>
-                      <span className="text-[9px] font-normal">Instant real-time bank transfer</span>
+                      <span className="text-[9px] font-normal">Instant payments via PayID (Real-time)</span>
                     </button>
                   </div>
 
@@ -954,14 +954,7 @@ export default function App() {
                   ) : (
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
                       <h5 className="font-bold text-purple-300">Pay with PayID</h5>
-                      <p><strong>PayID:</strong> {paymentDetails?.payid_number || '0491186505'}</p>
-                      <p><strong>Name:</strong> {paymentDetails?.payid_name || 'T Amos'}</p>
-                      <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
-                        Enter your delivery details below, then place your order and transfer via your banking app using the PayID above.
-                      </p>
-                      <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
-                        Please use your order number as the reference and we will match your payment to your order.
-                      </p>
+                      <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
                     </div>
                   )}
 
