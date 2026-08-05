@@ -1,5 +1,4 @@
 from django.contrib import admin
-
 from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment
 
 admin.site.register(AdminUser)
@@ -15,8 +14,7 @@ admin.site.register(Activity)
 @admin.register(PaymentDetails)
 class PaymentDetailsAdmin(admin.ModelAdmin):
     """Editable in Django admin, as required. Singleton — only one row."""
-
-    list_display = ("account_name", "bank_name", "bsb", "account_number", "paypal_email")
+    list_display = ("account_name", "bank_name", "bsb", "account_number", "payid_number", "payid_name", "paypal_email")
 
     def has_add_permission(self, request):
         return not PaymentDetails.objects.exists()
