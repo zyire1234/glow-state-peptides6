@@ -1111,7 +1111,6 @@ export default function App() {
                   )}
 
                   <div className="border-t border-white/10 pt-5">
-                    <p className="text-slate-500 text-[10px] mb-4">You can inspect sent simulated email files in the Admin Panel Outbox.</p>
                     <button
                       onClick={() => {
                         setIsCartOpen(false);
