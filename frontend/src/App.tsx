@@ -637,7 +637,7 @@ export default function App() {
               <section className="space-y-2 relative z-10">
                 <h3 className="font-display font-semibold text-white uppercase text-xs tracking-wider">2. Damage During Dispatch</h3>
                 <p className="text-xs text-slate-400">
-                  Should a vial break or sustain integrity damage during Australia-wide transit, immediately snap a photograph and send it to our administration email: <strong className="text-purple-400">Glowstatepeps@hotmail.com</strong>. We will expedite a zero-cost replacement shipment immediately.
+                  Should a vial break or sustain integrity damage during Australia-wide transit, immediately snap a photograph and send it to our administration email: <strong className="text-purple-400">glowstatesupport@gmail.com</strong>. We will expedite a zero-cost replacement shipment immediately.
                 </p>
               </section>
 
@@ -677,7 +677,7 @@ export default function App() {
             <div className="space-y-2 text-xs text-slate-500">
               <p className="flex items-center gap-1.5 text-slate-400">
                 <Mail className="h-3.5 w-3.5 text-purple-400" />
-                <a href="mailto:Glowstatepeps@hotmail.com" className="hover:underline">Glowstatepeps@hotmail.com</a>
+                <a href="mailto:glowstatesupport@gmail.com" className="hover:underline">glowstatesupport@gmail.com</a>
               </p>
               <p>Brisbane, Australia</p>
               <p className="text-[10px] text-slate-600">Australia-wide Tracked Shipping</p>
