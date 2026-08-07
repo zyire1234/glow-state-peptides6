@@ -1,0 +1,24 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Thank you for your order! — Glow State{% endblock %}
+
+{% block heading %}Thank you for your order!{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px 0;">Hi {{ customer_name }},</p>
+
+<p style="margin:0 0 14px 0;">
+  Thank you for your order! We're now carefully preparing your order for dispatch.
+</p>
+
+<p style="margin:0 0 14px 0;">
+  Once your order has been shipped, you'll receive an Australia Post tracking email.
+  Please keep an eye on your inbox, including your spam or junk folder, just in case.
+</p>
+
+{% include "emails/_order_details.html" with date_label="Order Placed" total_label="Order Total" %}
+
+<p style="margin:0 0 4px 0;">If you have any questions, we're always happy to help.</p>
+<p style="margin:0;">Thank you for your support. We hope you enjoy your purchase!</p>
+<p style="margin:14px 0 0 0;color:#ffffff;font-weight:600;">Glow State</p>
+{% endblock %}
