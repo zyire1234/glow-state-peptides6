@@ -924,7 +924,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Simulated Automated Email Log</h2>
-                <p className="text-slate-400 text-xs mt-1">Review exactly what automated HTML alerts and receipts were fired to `Glowstatepeps@hotmail.com` and customer mailboxes.</p>
+                <p className="text-slate-400 text-xs mt-1">Review exactly what automated HTML alerts and receipts were fired to `glowstatesupport@gmail.com` and customer mailboxes.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
