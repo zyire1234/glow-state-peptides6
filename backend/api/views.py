@@ -85,9 +85,10 @@ def notify_customer_order_confirmation(order):
     form and a new order is created."""
     context = _order_email_context(order, order.created_at)
     subject = f"Thank you for your order! — Glow State #{order.id}"
-    sent = send_branded_email(subject, "order_confirmation", context, order.customer_email)
+    sent, error = send_branded_email(subject, "order_confirmation", context, order.customer_email)
     log_activity("email_sent", json.dumps({
-        "to": order.customer_email, "subject": subject, "type": "order_confirmation", "sent": sent,
+        "to": order.customer_email, "subject": subject, "type": "order_confirmation",
+        "sent": sent, "error": error,
     }))
 
 
@@ -96,9 +97,10 @@ def notify_order_paid(order):
     admin, or automatically via a completed PayPal capture)."""
     context = _order_email_context(order, order.paid_at or timezone.now())
     subject = f"Payment received — Glow State order #{order.id}"
-    sent = send_branded_email(subject, "order_paid", context, order.customer_email)
+    sent, error = send_branded_email(subject, "order_paid", context, order.customer_email)
     log_activity("email_sent", json.dumps({
-        "to": order.customer_email, "subject": subject, "type": "order_paid", "sent": sent,
+        "to": order.customer_email, "subject": subject, "type": "order_paid",
+        "sent": sent, "error": error,
     }))
 
 
@@ -106,9 +108,10 @@ def notify_order_cancelled(order):
     """Sent whenever an order's status changes to Cancelled."""
     context = _order_email_context(order, timezone.now())
     subject = f"Order #{order.id} cancelled — Glow State"
-    sent = send_branded_email(subject, "order_cancelled", context, order.customer_email)
+    sent, error = send_branded_email(subject, "order_cancelled", context, order.customer_email)
     log_activity("email_sent", json.dumps({
-        "to": order.customer_email, "subject": subject, "type": "order_cancelled", "sent": sent,
+        "to": order.customer_email, "subject": subject, "type": "order_cancelled",
+        "sent": sent, "error": error,
     }))
 
 
