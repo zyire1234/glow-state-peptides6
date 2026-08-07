@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Glow State{% endblock %}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#050510;font-family:Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#050510;padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background-color:#0a0a25;border-radius:16px;overflow:hidden;border:1px solid rgba(168,85,247,0.25);">
+
+          <!-- gradient accent bar -->
+          <tr>
+            <td style="height:5px;background-color:#9333ea;background-image:linear-gradient(90deg,#9333ea,#d946ef,#2563eb);font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+
+          <!-- logo / wordmark -->
+          <tr>
+            <td align="center" style="padding:32px 32px 4px 32px;">
+              <img src="cid:glow_logo" width="80" height="80" alt="Glow State" style="display:block;border-radius:50%;border:1px solid rgba(168,85,247,0.4);" />
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:0 32px 28px 32px;">
+              <div style="color:#ffffff;font-size:19px;font-weight:700;letter-spacing:3px;font-family:Arial, Helvetica, sans-serif;">GLOW STATE</div>
+            </td>
+          </tr>
+
+          <!-- heading -->
+          <tr>
+            <td style="padding:0 36px;">
+              <div style="color:#ffffff;font-size:18px;font-weight:700;line-height:1.4;padding-bottom:14px;">
+                {% block heading %}{% endblock %}
+              </div>
+            </td>
+          </tr>
+
+          <!-- body content -->
+          <tr>
+            <td style="padding:0 36px 8px 36px;color:#cbd5e1;font-size:13.5px;line-height:1.7;">
+              {% block content %}{% endblock %}
+            </td>
+          </tr>
+
+          <!-- footer -->
+          <tr>
+            <td style="padding:30px 36px 32px 36px;">
+              <div style="border-top:1px solid rgba(255,255,255,0.1);padding-top:20px;color:#94a3b8;font-size:11px;line-height:1.8;text-align:center;">
+                If you have any questions, we're always happy to help.<br />
+                For any inquiries or complaints, contact us at
+                <a href="mailto:glowstatesupport@gmail.com" style="color:#c084fc;text-decoration:none;">glowstatesupport@gmail.com</a>
+                <br /><br />
+                Glow State &mdash; Research peptides, Brisbane QLD, Australia.<br />
+                All products are sold strictly for laboratory research purposes only.
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
