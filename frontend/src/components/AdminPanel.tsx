@@ -51,8 +51,11 @@ interface SimulatedEmail {
   id: number;
   to: string;
   subject: string;
-  html: string;
+  html?: string;
   created_at: string;
+  type?: string;
+  sent?: boolean;
+  error?: string | null;
 }
 
 interface AdminPanelProps {
@@ -923,8 +926,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {activeTab === 'emails' && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Simulated Automated Email Log</h2>
-                <p className="text-slate-400 text-xs mt-1">Review exactly what automated HTML alerts and receipts were fired to `glowstatesupport@gmail.com` and customer mailboxes.</p>
+                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Automated Email Log</h2>
+                <p className="text-slate-400 text-xs mt-1">Review exactly what automated order emails were sent (or failed) to `glowstatesupport@gmail.com` and customer mailboxes.</p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -946,6 +949,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                         <span className="text-[9px] font-mono text-slate-500">{new Date(mail.created_at).toLocaleTimeString()}</span>
                       </div>
                       <span className="font-medium text-white truncate w-full">{mail.subject}</span>
+                      {mail.sent === true && (
+                        <span className="self-start text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">✓ SENT</span>
+                      )}
+                      {mail.sent === false && (
+                        <span className="self-start text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400">✗ FAILED</span>
+                      )}
                     </button>
                   ))}
                   {emails.length === 0 && (
@@ -962,8 +971,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                         <p className="text-xs text-slate-400">Recipient Address: <strong className="text-purple-400 font-bold">{selectedEmail.to}</strong></p>
                         <p className="text-[10px] text-slate-500 font-mono">Dispatched Timestamp: {new Date(selectedEmail.created_at).toLocaleString()}</p>
                       </div>
+                      {selectedEmail.sent === true && (
+                        <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs font-semibold">
+                          ✓ Sent successfully via SMTP.
+                        </div>
+                      )}
+                      {selectedEmail.sent === false && (
+                        <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs space-y-1">
+                          <p className="font-bold">✗ Send failed</p>
+                          <p className="font-mono text-[11px] break-words">{selectedEmail.error || 'Unknown error'}</p>
+                        </div>
+                      )}
                       <div className="flex-1 bg-white rounded-xl overflow-y-auto p-4 border border-slate-700 shadow-inner">
-                        <div dangerouslySetInnerHTML={{ __html: selectedEmail.html }} />
+                        {selectedEmail.html ? (
+                          <div dangerouslySetInnerHTML={{ __html: selectedEmail.html }} />
+                        ) : (
+                          <p className="text-slate-400 text-xs italic">No HTML preview stored for this log entry — the templated email was rendered fresh at send time and isn't saved here.</p>
+                        )}
                       </div>
                     </div>
                   ) : (
