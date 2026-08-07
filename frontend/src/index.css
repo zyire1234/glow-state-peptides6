@@ -8,19 +8,19 @@
 }
 
 @layer utilities {
-  /* Announcement bar: continuous upward-scrolling marquee.
-     The track renders the message list twice; translating it up by
-     exactly 50% of its own height loops seamlessly. */
+  /* Announcement bar: continuous left-scrolling marquee.
+     The track renders the message list twice; translating it left by
+     exactly 50% of its own width loops seamlessly. */
   .announcement-track {
-    animation: announcement-scroll-up 8s linear infinite;
+    animation: announcement-scroll-left 18s linear infinite;
   }
 
-  @keyframes announcement-scroll-up {
+  @keyframes announcement-scroll-left {
     0% {
-      transform: translateY(0);
+      transform: translateX(0);
     }
     100% {
-      transform: translateY(-50%);
+      transform: translateX(-50%);
     }
   }
 
