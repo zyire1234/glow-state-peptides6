@@ -3,8 +3,9 @@ cancelled). Falls back to a safe no-op when SMTP isn't configured, exactly
 like the previous plain-text notifications did — callers don't need to
 change how they handle the return value.
 """
+import email.utils
 import os
-from email.mime.image import MIMEImage
+from email.message import MIMEPart
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -12,6 +13,10 @@ from django.template.loader import render_to_string
 from django.utils.html import strip_tags
 
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "emails_assets", "logo.jpg")
+
+# Fixed Content-ID so every template can reference the logo the same way,
+# via <img src="cid:glow_logo">, without needing a fresh id per send.
+_LOGO_CID = "<glow_logo>"
 
 
 def send_branded_email(subject, template_name, context, to_email):
@@ -37,21 +42,26 @@ def send_branded_email(subject, template_name, context, to_email):
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[to_email],
     )
-    msg.attach_alternative(html_body, "text/html")
-    # Required so the inline cid: image is delivered as part of the same
-    # multipart/related message as the HTML alternative, instead of as a
-    # regular attachment.
-    msg.mixed_subtype = "related"
 
+    # Embed the logo as an inline image (modern Django 6+ API — the old
+    # `msg.mixed_subtype = "related"` trick was removed in Django 6.0).
     if os.path.exists(_LOGO_PATH):
         try:
             with open(_LOGO_PATH, "rb") as f:
-                logo = MIMEImage(f.read(), _subtype="jpeg")
-            logo.add_header("Content-ID", "<glow_logo>")
-            logo.add_header("Content-Disposition", "inline", filename="logo.jpg")
-            msg.attach(logo)
+                logo_bytes = f.read()
+            inline_image = MIMEPart()
+            inline_image.set_content(
+                logo_bytes,
+                maintype="image",
+                subtype="jpeg",
+                disposition="inline",
+                cid=_LOGO_CID,
+            )
+            msg.attach(inline_image)
         except OSError:
             pass
+
+    msg.attach_alternative(html_body, "text/html")
 
     try:
         # fail_silently=False so real SMTP errors (bad auth, wrong port,
