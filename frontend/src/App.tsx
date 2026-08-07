@@ -4,6 +4,7 @@ import {
   MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink
 } from 'lucide-react';
 import { Logo } from './components/Logo';
+import { AnnouncementBar } from './components/AnnouncementBar';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
 import { API_BASE_URL } from './lib/apiConfig';
@@ -255,8 +256,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#050510] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+      {/* 1. Announcement bar */}
+      <AnnouncementBar messages={['Free express shipping for orders over $160']} />
+
       {/* 2. Primary Navigation Bar */}
-      <nav className="sticky top-0 z-40 bg-[#08081a]/90 backdrop-blur-md border-b border-white/10">
+      <nav className="sticky top-8 z-40 bg-[#08081a]/90 backdrop-blur-md border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="cursor-pointer" onClick={() => { setActivePage('home'); setSelectedProduct(null); }}>
             <Logo size={62} />
