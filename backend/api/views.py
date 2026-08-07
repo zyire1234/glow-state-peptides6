@@ -18,6 +18,7 @@ from rest_framework.response import Response
 
 from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
+from .email_utils import send_branded_email
 from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
@@ -65,17 +66,56 @@ def notify_admin_new_order(order):
     log_activity("email_sent", json.dumps(payload))
 
 
-def notify_customer_order_confirmation(order):
-    payload = {
-        "to": order.customer_email,
-        "subject": f"Your Glow State Peptides order #{order.id} was received",
-        "summary": f"Thanks {order.customer_name}, we received your order for ${order.total_amount:.2f} AUD. We'll be in touch with payment details shortly.",
+def _order_email_context(order, event_time):
+    """Shared context for every branded order email template."""
+    return {
+        "order": order,
+        "items": list(order.items.all()),
+        "customer_name": order.customer_name,
+        "order_id": order.id,
+        "total_amount": order.total_amount,
+        "payment_method": order.get_payment_method_display(),
+        "customer_address": order.customer_address,
+        "event_time": timezone.localtime(event_time),
     }
-    _send_email(payload["subject"], payload["summary"], order.customer_email)
-    log_activity("email_sent", json.dumps(payload))
+
+
+def notify_customer_order_confirmation(order):
+    """Sent when a customer submits the Research Delivery Address / checkout
+    form and a new order is created."""
+    context = _order_email_context(order, order.created_at)
+    subject = f"Thank you for your order! — Glow State #{order.id}"
+    sent = send_branded_email(subject, "order_confirmation", context, order.customer_email)
+    log_activity("email_sent", json.dumps({
+        "to": order.customer_email, "subject": subject, "type": "order_confirmation", "sent": sent,
+    }))
+
+
+def notify_order_paid(order):
+    """Sent whenever an order's status changes to Paid (manually by an
+    admin, or automatically via a completed PayPal capture)."""
+    context = _order_email_context(order, order.paid_at or timezone.now())
+    subject = f"Payment received — Glow State order #{order.id}"
+    sent = send_branded_email(subject, "order_paid", context, order.customer_email)
+    log_activity("email_sent", json.dumps({
+        "to": order.customer_email, "subject": subject, "type": "order_paid", "sent": sent,
+    }))
+
+
+def notify_order_cancelled(order):
+    """Sent whenever an order's status changes to Cancelled."""
+    context = _order_email_context(order, timezone.now())
+    subject = f"Order #{order.id} cancelled — Glow State"
+    sent = send_branded_email(subject, "order_cancelled", context, order.customer_email)
+    log_activity("email_sent", json.dumps({
+        "to": order.customer_email, "subject": subject, "type": "order_cancelled", "sent": sent,
+    }))
 
 
 def notify_status_update(order, note):
+    """Plain-text fallback for order status changes that aren't Paid or
+    Cancelled (e.g. Invoice Sent, Shipped) and don't yet have a dedicated
+    branded template."""
     payload = {
         "to": order.customer_email,
         "subject": f"Order #{order.id} update",
@@ -316,9 +356,20 @@ def order_update_status(request, order_id):
         return JsonResponse({"error": "Order not found."}, status=404)
 
     order.status = status
-    order.save(update_fields=["status"])
+    update_fields = ["status"]
+    if status == "paid" and not order.paid_at:
+        order.paid_at = timezone.now()
+        update_fields.append("paid_at")
+    order.save(update_fields=update_fields)
     log_activity("order_updated", f"Order ID #{order_id} status updated to: {status.replace('_', ' ')}")
-    notify_status_update(order, f"Status updated to {status}")
+
+    if status == "paid":
+        notify_order_paid(order)
+    elif status == "cancelled":
+        notify_order_cancelled(order)
+    else:
+        notify_status_update(order, f"Status updated to {status}")
+
     return JsonResponse(order.to_dict())
 
 
@@ -584,7 +635,7 @@ def paypal_capture_order(request):
         "order_paid",
         f"Order #{order.id} paid via PayPal. Transaction ID: {transaction_id}.",
     )
-    notify_status_update(order, f"Payment received via PayPal (transaction {transaction_id}). Your order is now being processed.")
+    notify_order_paid(order)
 
     return JsonResponse(order.to_dict())
 
@@ -708,8 +759,22 @@ class OrderViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     permission_classes = [IsAdmin]
 
     def perform_update(self, serializer):
+        previous_status = serializer.instance.status
         order = serializer.save()
         log_activity("order_updated", f"Order ID #{order.id} status updated to: {order.status.replace('_', ' ')}")
+
+        # Only fire a status-change email when the status actually changed
+        # (e.g. avoid re-sending "Paid" if an admin edits something else on
+        # an already-paid order), and only for the two statuses that have a
+        # dedicated branded template.
+        if order.status != previous_status:
+            if order.status == "paid":
+                if not order.paid_at:
+                    order.paid_at = timezone.now()
+                    order.save(update_fields=["paid_at"])
+                notify_order_paid(order)
+            elif order.status == "cancelled":
+                notify_order_cancelled(order)
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
