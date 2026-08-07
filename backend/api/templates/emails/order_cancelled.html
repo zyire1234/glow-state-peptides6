@@ -1,0 +1,23 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Order Cancelled — Glow State{% endblock %}
+
+{% block heading %}Your order has been cancelled{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px 0;">Hi {{ customer_name }},</p>
+
+<p style="margin:0 0 14px 0;">
+  This is to let you know that your order below has been cancelled.
+</p>
+
+<p style="margin:0 0 14px 0;">
+  If any payment was already made, our team will be in touch shortly regarding a refund.
+  If you believe this was a mistake or have any questions, please reach out &mdash; we're happy to help.
+</p>
+
+{% include "emails/_order_details.html" with date_label="Cancelled On" total_label="Order Total" %}
+
+<p style="margin:0;">Thank you for your understanding.</p>
+<p style="margin:14px 0 0 0;color:#ffffff;font-weight:600;">Glow State</p>
+{% endblock %}
