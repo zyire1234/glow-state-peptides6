@@ -257,7 +257,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#050510] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
       {/* 1. Announcement bar */}
-      <AnnouncementBar messages={['Free express shipping for orders over $160']} />
+      <AnnouncementBar message="Free express shipping for orders over $160" />
 
       {/* 2. Primary Navigation Bar */}
       <nav className="sticky top-8 z-40 bg-[#08081a]/90 backdrop-blur-md border-b border-white/10">
