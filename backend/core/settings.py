@@ -117,6 +117,11 @@ STORAGES = {
     },
 }
 
+# Public base URL of this backend service, used to build absolute image URLs
+# for outbound emails (e.g. the logo) — emails have no "current page" to
+# resolve a relative /static/... path against, so it needs the full domain.
+SITE_URL = os.environ.get("SITE_URL", "https://glow-state-peptides6.onrender.com")
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Product Certificate (COA) uploads are sent as base64 JSON (~33% larger
