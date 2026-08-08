@@ -2,25 +2,17 @@
 cancelled). Falls back to a safe no-op when SMTP isn't configured, exactly
 like the previous plain-text notifications did — callers don't need to
 change how they handle the return value.
-
-The Glow State logo is a normal hosted <img> (served by WhiteNoise from
-Django's static files), not an inline CID attachment — CID embedding
-depends on inconsistent, client-specific MIME handling, whereas a plain
-hosted image URL is the same technique virtually every commercial email
-platform (Mailchimp, Shopify, etc.) uses, and renders reliably everywhere.
 """
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-from django.templatetags.static import static
 from django.utils.html import strip_tags
 
 
 def send_branded_email(subject, template_name, context, to_email):
     """Renders templates/emails/{template_name}.html (which extends the
     shared base_email.html brand layout) and sends it with a plain-text
-    fallback. The template context automatically gets a `logo_url` — the
-    full absolute URL of the Glow State logo — added in.
+    fallback.
 
     Returns (sent, error): sent is True only if SMTP confirmed delivery to
     at least one recipient. error is None on success, or a short string
@@ -30,8 +22,7 @@ def send_branded_email(subject, template_name, context, to_email):
     if not settings.EMAIL_ENABLED or not settings.EMAIL_HOST:
         return False, "Email sending is disabled (EMAIL_ENABLED/SMTP_HOST not configured)."
 
-    full_context = {**context, "logo_url": f"{settings.SITE_URL}{static('emails/logo.jpg')}"}
-    html_body = render_to_string(f"emails/{template_name}.html", full_context)
+    html_body = render_to_string(f"emails/{template_name}.html", context)
     text_body = strip_tags(html_body)
 
     msg = EmailMultiAlternatives(
