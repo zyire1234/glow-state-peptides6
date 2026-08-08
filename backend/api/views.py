@@ -55,6 +55,9 @@ def _send_email(subject, message, to_email):
 
 
 def notify_admin_new_order(order):
+    """Alerts the admin inbox of a new order. Never raises: a notification
+    failing must never turn a successfully-saved order into a failed
+    request for the customer."""
     payload = {
         "to": "admin",
         "subject": f"New order request #{order.id}",
@@ -62,7 +65,10 @@ def notify_admin_new_order(order):
     }
     from django.conf import settings
 
-    _send_email(payload["subject"], payload["summary"], settings.ADMIN_NOTIFICATION_EMAIL)
+    try:
+        _send_email(payload["subject"], payload["summary"], settings.ADMIN_NOTIFICATION_EMAIL)
+    except Exception as exc:
+        payload["error"] = str(exc)
     log_activity("email_sent", json.dumps(payload))
 
 
@@ -82,10 +88,17 @@ def _order_email_context(order, event_time):
 
 def notify_customer_order_confirmation(order):
     """Sent when a customer submits the Research Delivery Address / checkout
-    form and a new order is created."""
-    context = _order_email_context(order, order.created_at)
+    form and a new order is created.
+
+    Never raises: a notification email failing must never turn a
+    successfully-saved order into a failed request for the customer.
+    """
     subject = f"Thank you for your order! — Glow State #{order.id}"
-    sent, error = send_branded_email(subject, "order_confirmation", context, order.customer_email)
+    try:
+        context = _order_email_context(order, order.created_at)
+        sent, error = send_branded_email(subject, "order_confirmation", context, order.customer_email)
+    except Exception as exc:
+        sent, error = False, str(exc)
     log_activity("email_sent", json.dumps({
         "to": order.customer_email, "subject": subject, "type": "order_confirmation",
         "sent": sent, "error": error,
@@ -94,10 +107,13 @@ def notify_customer_order_confirmation(order):
 
 def notify_order_paid(order):
     """Sent whenever an order's status changes to Paid (manually by an
-    admin, or automatically via a completed PayPal capture)."""
-    context = _order_email_context(order, order.paid_at or timezone.now())
+    admin, or automatically via a completed PayPal capture). Never raises."""
     subject = f"Payment received — Glow State order #{order.id}"
-    sent, error = send_branded_email(subject, "order_paid", context, order.customer_email)
+    try:
+        context = _order_email_context(order, order.paid_at or timezone.now())
+        sent, error = send_branded_email(subject, "order_paid", context, order.customer_email)
+    except Exception as exc:
+        sent, error = False, str(exc)
     log_activity("email_sent", json.dumps({
         "to": order.customer_email, "subject": subject, "type": "order_paid",
         "sent": sent, "error": error,
@@ -105,10 +121,13 @@ def notify_order_paid(order):
 
 
 def notify_order_cancelled(order):
-    """Sent whenever an order's status changes to Cancelled."""
-    context = _order_email_context(order, timezone.now())
+    """Sent whenever an order's status changes to Cancelled. Never raises."""
     subject = f"Order #{order.id} cancelled — Glow State"
-    sent, error = send_branded_email(subject, "order_cancelled", context, order.customer_email)
+    try:
+        context = _order_email_context(order, timezone.now())
+        sent, error = send_branded_email(subject, "order_cancelled", context, order.customer_email)
+    except Exception as exc:
+        sent, error = False, str(exc)
     log_activity("email_sent", json.dumps({
         "to": order.customer_email, "subject": subject, "type": "order_cancelled",
         "sent": sent, "error": error,
@@ -118,13 +137,16 @@ def notify_order_cancelled(order):
 def notify_status_update(order, note):
     """Plain-text fallback for order status changes that aren't Paid or
     Cancelled (e.g. Invoice Sent, Shipped) and don't yet have a dedicated
-    branded template."""
+    branded template. Never raises."""
     payload = {
         "to": order.customer_email,
         "subject": f"Order #{order.id} update",
         "summary": note,
     }
-    _send_email(payload["subject"], payload["summary"], order.customer_email)
+    try:
+        _send_email(payload["subject"], payload["summary"], order.customer_email)
+    except Exception as exc:
+        payload["error"] = str(exc)
     log_activity("email_sent", json.dumps(payload))
 
 
