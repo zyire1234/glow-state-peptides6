@@ -2,28 +2,25 @@
 cancelled). Falls back to a safe no-op when SMTP isn't configured, exactly
 like the previous plain-text notifications did — callers don't need to
 change how they handle the return value.
-"""
-import email.utils
-import os
-from email.message import MIMEPart
 
+The Glow State logo is a normal hosted <img> (served by WhiteNoise from
+Django's static files), not an inline CID attachment — CID embedding
+depends on inconsistent, client-specific MIME handling, whereas a plain
+hosted image URL is the same technique virtually every commercial email
+platform (Mailchimp, Shopify, etc.) uses, and renders reliably everywhere.
+"""
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.templatetags.static import static
 from django.utils.html import strip_tags
-
-_LOGO_PATH = os.path.join(os.path.dirname(__file__), "emails_assets", "logo.jpg")
-
-# Fixed Content-ID so every template can reference the logo the same way,
-# via <img src="cid:glow_logo">, without needing a fresh id per send.
-_LOGO_CID = "<glow_logo>"
 
 
 def send_branded_email(subject, template_name, context, to_email):
     """Renders templates/emails/{template_name}.html (which extends the
     shared base_email.html brand layout) and sends it with a plain-text
-    fallback and the Glow State logo embedded inline (referenced in the
-    template as cid:glow_logo).
+    fallback. The template context automatically gets a `logo_url` — the
+    full absolute URL of the Glow State logo — added in.
 
     Returns (sent, error): sent is True only if SMTP confirmed delivery to
     at least one recipient. error is None on success, or a short string
@@ -33,7 +30,8 @@ def send_branded_email(subject, template_name, context, to_email):
     if not settings.EMAIL_ENABLED or not settings.EMAIL_HOST:
         return False, "Email sending is disabled (EMAIL_ENABLED/SMTP_HOST not configured)."
 
-    html_body = render_to_string(f"emails/{template_name}.html", context)
+    full_context = {**context, "logo_url": f"{settings.SITE_URL}{static('emails/logo.jpg')}"}
+    html_body = render_to_string(f"emails/{template_name}.html", full_context)
     text_body = strip_tags(html_body)
 
     msg = EmailMultiAlternatives(
@@ -42,25 +40,6 @@ def send_branded_email(subject, template_name, context, to_email):
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[to_email],
     )
-
-    # Embed the logo as an inline image (modern Django 6+ API — the old
-    # `msg.mixed_subtype = "related"` trick was removed in Django 6.0).
-    if os.path.exists(_LOGO_PATH):
-        try:
-            with open(_LOGO_PATH, "rb") as f:
-                logo_bytes = f.read()
-            inline_image = MIMEPart()
-            inline_image.set_content(
-                logo_bytes,
-                maintype="image",
-                subtype="jpeg",
-                disposition="inline",
-                cid=_LOGO_CID,
-            )
-            msg.attach(inline_image)
-        except OSError:
-            pass
-
     msg.attach_alternative(html_body, "text/html")
 
     try:
