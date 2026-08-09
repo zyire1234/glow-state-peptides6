@@ -64,6 +64,7 @@ export default function App() {
     email: '',
     address: '',
     postcode: '',
+    state: '',
   });
   const [placedOrder, setPlacedOrder] = useState<any>(null);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
@@ -211,7 +212,7 @@ export default function App() {
     const payload = {
       customer_name: shippingDetails.name,
       customer_email: shippingDetails.email,
-      customer_address: `${shippingDetails.address}, QLD, Postcode: ${shippingDetails.postcode}`,
+      customer_address: `${shippingDetails.address}, ${shippingDetails.state}, Postcode: ${shippingDetails.postcode}`,
       payment_method: paymentMethod,
       total_amount: orderTotal,
       items: itemsPayload
@@ -991,7 +992,7 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Shipping Address (QLD/NSW/VIC/etc.)</label>
+                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Shipping Address</label>
                         <input
                           type="text"
                           required
@@ -1015,13 +1016,23 @@ export default function App() {
                           />
                         </div>
                         <div>
-                          <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Shipping Region</label>
-                          <input
-                            type="text"
-                            disabled
-                            value="Australia Nationwide"
-                            className="w-full bg-white/5 border border-white/10 text-slate-500 rounded-xl px-3.5 py-2.5 font-bold"
-                          />
+                          <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">State</label>
+                          <select
+                            required
+                            value={shippingDetails.state}
+                            onChange={(e) => setShippingDetails({ ...shippingDetails, state: e.target.value })}
+                            className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-bold appearance-none"
+                          >
+                            <option value="" disabled>Select...</option>
+                            <option value="NSW">NSW</option>
+                            <option value="VIC">VIC</option>
+                            <option value="QLD">QLD</option>
+                            <option value="WA">WA</option>
+                            <option value="SA">SA</option>
+                            <option value="TAS">TAS</option>
+                            <option value="ACT">ACT</option>
+                            <option value="NT">NT</option>
+                          </select>
                         </div>
                       </div>
                     </div>
