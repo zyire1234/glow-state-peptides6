@@ -195,6 +195,21 @@ export default function App() {
     return (getCartTotal() + getShippingFee()) * PAYPAL_FEE_RATE;
   };
 
+  // Direct "pay now" link straight to the PayPal account on file — no
+  // integration/API keys required, just PayPal's own hosted payment page
+  // pre-filled with the recipient, amount and a reference note.
+  const getPaypalPayUrl = (amount: number, reference?: string) => {
+    const email = paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com';
+    const params = new URLSearchParams({
+      cmd: '_xclick',
+      business: email,
+      amount: amount.toFixed(2),
+      currency_code: 'AUD',
+      item_name: reference ? `Glow State order ${reference}` : 'Glow State order',
+    });
+    return `https://www.paypal.com/cgi-bin/webscr?${params.toString()}`;
+  };
+
   // Total the customer actually owes: subtotal + flat shipping fee, plus the
   // PayPal surcharge if that's the selected payment route.
   const getOrderTotal = () => {
@@ -990,13 +1005,26 @@ export default function App() {
                       <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
                     </div>
                   ) : (
-                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
-                      <h5 className="font-bold text-yellow-300">Pay with PayPal:</h5>
-                      <p>
-                        Complete your payment of{' '}
-                        <strong className="text-white">${getOrderTotal().toFixed(2)} AUD</strong> securely with
-                        PayPal ({paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}). A 3% PayPal
-                        processing fee is included in the total above.
+                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-3 text-slate-300 leading-relaxed">
+                      <div>
+                        <h5 className="font-bold text-yellow-300">Pay with PayPal</h5>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          A 3% PayPal processing fee is included in the total below.
+                        </p>
+                      </div>
+                      <a
+                        href={getPaypalPayUrl(getOrderTotal())}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-center py-3 bg-[#ffc439] hover:brightness-95 text-[#003087] font-extrabold rounded-full text-sm transition-all"
+                      >
+                        Pay with PayPal
+                      </a>
+                      <p className="text-[10px] text-slate-500">
+                        Opens PayPal to send{' '}
+                        <strong className="text-slate-300">${getOrderTotal().toFixed(2)} AUD</strong> directly to{' '}
+                        {paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}. Still submit this form
+                        afterwards so we can match your payment to your order.
                       </p>
                     </div>
                   )}
@@ -1192,11 +1220,22 @@ export default function App() {
                           )}
                         </>
                       ) : (
+                        <a
+                          href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block w-full text-center py-3 bg-[#ffc439] hover:brightness-95 text-[#003087] font-extrabold rounded-full text-sm transition-all"
+                        >
+                          Pay with PayPal
+                        </a>
+                      )}
+                      {!paymentDetails?.paypal_client_id && (
                         <p className="text-[11px] text-slate-400">
-                          Send payment directly to{' '}
-                          <strong className="text-white">{paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}</strong>{' '}
-                          via PayPal (Friends &amp; Family or Goods &amp; Services), using your order number as the
-                          reference so we can match your payment.
+                          Opens PayPal to send payment directly to{' '}
+                          <strong className="text-white">{paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}</strong>.
+                          Please note your order number{' '}
+                          <strong className="text-white">#00{placedOrder.id}</strong> in the payment note so we can
+                          match it to your order.
                         </p>
                       )}
                     </div>
