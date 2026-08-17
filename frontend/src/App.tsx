@@ -7,6 +7,7 @@ import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
+import { PayPalButton } from './components/PayPalButton';
 import { API_BASE_URL } from './lib/apiConfig';
 // Connected to the real Django + SQLite backend. All `/api/...` calls below
 // use the browser's native `fetch` and are routed to the backend via the
@@ -58,7 +59,7 @@ export default function App() {
 
   // Checkout state
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
-  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid'>('bank_transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid' | 'paypal'>('bank_transfer');
   const [shippingDetails, setShippingDetails] = useState({
     name: '',
     email: '',
@@ -186,10 +187,18 @@ export default function App() {
     return getCartTotal() > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
 
-  // Total the customer actually owes: subtotal + flat shipping fee. Neither
-  // Bank Transfer nor PayID carries a surcharge, so no fee is added here.
+  // PayPal carries a 3% surcharge (covers PayPal's processing fees) on top
+  // of the subtotal + shipping. Bank Transfer and PayID remain fee-free.
+  const PAYPAL_FEE_RATE = 0.03;
+  const getPaypalFee = () => {
+    if (cart.length === 0 || paymentMethod !== 'paypal') return 0;
+    return (getCartTotal() + getShippingFee()) * PAYPAL_FEE_RATE;
+  };
+
+  // Total the customer actually owes: subtotal + flat shipping fee, plus the
+  // PayPal surcharge if that's the selected payment route.
   const getOrderTotal = () => {
-    return getCartTotal() + getShippingFee();
+    return getCartTotal() + getShippingFee() + getPaypalFee();
   };
 
   const getCartCount = () => {
@@ -919,7 +928,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('bank_transfer')}
@@ -945,6 +954,19 @@ export default function App() {
                       <span className="font-semibold text-xs">PayID</span>
                       <span className="text-[9px] font-normal">Instant payments via PayID (Real-time)</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('paypal')}
+                      className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                        paymentMethod === 'paypal'
+                          ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
+                          : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="font-semibold text-xs">PayPal</span>
+                      <span className="text-[9px] font-normal">Pay with PayPal (+3% fee)</span>
+                    </button>
                   </div>
 
                   {/* Payment instructions warning */}
@@ -962,10 +984,20 @@ export default function App() {
                         Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
-                  ) : (
+                  ) : paymentMethod === 'payid' ? (
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
                       <h5 className="font-bold text-purple-300">Pay with PayID</h5>
                       <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-yellow-300">Pay with PayPal:</h5>
+                      <p>
+                        Complete your payment of{' '}
+                        <strong className="text-white">${getOrderTotal().toFixed(2)} AUD</strong> securely with
+                        PayPal ({paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}). A 3% PayPal
+                        processing fee is included in the total above.
+                      </p>
                     </div>
                   )}
 
@@ -1055,6 +1087,12 @@ export default function App() {
                         <span>Shipping</span>
                         <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
                       </div>
+                      {paymentMethod === 'paypal' && (
+                        <div className="flex justify-between text-yellow-400">
+                          <span>PayPal Fee (3%)</span>
+                          <span className="font-mono">${getPaypalFee().toFixed(2)} AUD</span>
+                        </div>
+                      )}
                       <div className="flex justify-between font-mono font-bold text-white text-sm pt-1.5 border-t border-white/10">
                         <span>Total</span>
                         <span className="text-purple-400">${getOrderTotal().toFixed(2)} AUD</span>
@@ -1119,7 +1157,7 @@ export default function App() {
                         Please use your order number as the reference and we will match your payment to your order.
                       </p>
                     </div>
-                  ) : (
+                  ) : placedOrder.payment_method === 'payid' ? (
                     <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
                       <h4 className="font-bold text-purple-300">Action Required: Pay via PayID</h4>
                       <p><strong>PayID:</strong> {paymentDetails?.payid_number || '0491186505'}</p>
@@ -1128,6 +1166,39 @@ export default function App() {
                       <p className="font-bold text-yellow-400">
                         Please use your order number as the reference and we will match your payment to your order.
                       </p>
+                    </div>
+                  ) : (
+                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
+                      <h4 className="font-bold text-yellow-300">Pay with PayPal:</h4>
+                      <p>
+                        Complete your payment of{' '}
+                        <strong className="text-white">${Number(placedOrder.total_amount).toFixed(2)} AUD</strong>{' '}
+                        securely with PayPal.
+                      </p>
+
+                      {paymentDetails?.paypal_client_id ? (
+                        <>
+                          <PayPalButton
+                            clientId={paymentDetails.paypal_client_id}
+                            orderId={placedOrder.id}
+                            onSuccess={(updatedOrder) => {
+                              setPaypalError('');
+                              setPlacedOrder(updatedOrder);
+                            }}
+                            onError={(message) => setPaypalError(message)}
+                          />
+                          {paypalError && (
+                            <p className="text-[11px] text-red-400 font-semibold">{paypalError}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">
+                          Send payment directly to{' '}
+                          <strong className="text-white">{paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}</strong>{' '}
+                          via PayPal (Friends &amp; Family or Goods &amp; Services), using your order number as the
+                          reference so we can match your payment.
+                        </p>
+                      )}
                     </div>
                   )}
 
