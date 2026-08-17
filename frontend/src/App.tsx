@@ -981,6 +981,7 @@ export default function App() {
                     >
                       <span className="font-semibold text-xs">PayPal</span>
                       <span className="text-[9px] font-normal">Pay with PayPal</span>
+                      <span className="text-[9px] font-normal">Express payment with Apple Pay available</span>
                     </button>
                   </div>
 
@@ -1010,9 +1011,6 @@ export default function App() {
                       <p className="text-[10px] text-slate-400">
                         A 3% PayPal processing fee is automatically added. Complete shipping details, then you
                         will be directed to the payment method.
-                      </p>
-                      <p className="text-[10px] text-slate-400">
-                        Express payment with Apple Pay available.
                       </p>
                     </div>
                   )}
