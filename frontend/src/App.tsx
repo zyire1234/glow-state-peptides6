@@ -59,7 +59,7 @@ export default function App() {
 
   // Checkout state
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
-  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid' | 'paypal'>('bank_transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid' | 'paypal_invoice'>('bank_transfer');
   const [shippingDetails, setShippingDetails] = useState({
     name: '',
     email: '',
@@ -191,7 +191,7 @@ export default function App() {
   // of the subtotal + shipping. Bank Transfer and PayID remain fee-free.
   const PAYPAL_FEE_RATE = 0.03;
   const getPaypalFee = () => {
-    if (cart.length === 0 || paymentMethod !== 'paypal') return 0;
+    if (cart.length === 0 || paymentMethod !== 'paypal_invoice') return 0;
     return (getCartTotal() + getShippingFee()) * PAYPAL_FEE_RATE;
   };
 
@@ -972,9 +972,9 @@ export default function App() {
 
                     <button
                       type="button"
-                      onClick={() => setPaymentMethod('paypal')}
+                      onClick={() => setPaymentMethod('paypal_invoice')}
                       className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
-                        paymentMethod === 'paypal'
+                        paymentMethod === 'paypal_invoice'
                           ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
                           : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
                       }`}
@@ -1005,26 +1005,11 @@ export default function App() {
                       <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
                     </div>
                   ) : (
-                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-3 text-slate-300 leading-relaxed">
-                      <div>
-                        <h5 className="font-bold text-yellow-300">Pay with PayPal</h5>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          A 3% PayPal processing fee is included in the total below.
-                        </p>
-                      </div>
-                      <a
-                        href={getPaypalPayUrl(getOrderTotal())}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full text-center py-3 bg-[#ffc439] hover:brightness-95 text-[#003087] font-extrabold rounded-full text-sm transition-all"
-                      >
-                        Pay with PayPal
-                      </a>
-                      <p className="text-[10px] text-slate-500">
-                        Opens PayPal to send{' '}
-                        <strong className="text-slate-300">${getOrderTotal().toFixed(2)} AUD</strong> directly to{' '}
-                        {paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}. Still submit this form
-                        afterwards so we can match your payment to your order.
+                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-yellow-300">Pay with PayPal</h5>
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        A 3% PayPal processing fee is included in the total below. Once you place your order,
+                        you'll be taken to the PayPal payment step.
                       </p>
                     </div>
                   )}
@@ -1115,7 +1100,7 @@ export default function App() {
                         <span>Shipping</span>
                         <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
                       </div>
-                      {paymentMethod === 'paypal' && (
+                      {paymentMethod === 'paypal_invoice' && (
                         <div className="flex justify-between text-yellow-400">
                           <span>PayPal Fee (3%)</span>
                           <span className="font-mono">${getPaypalFee().toFixed(2)} AUD</span>
@@ -1228,15 +1213,6 @@ export default function App() {
                         >
                           Pay with PayPal
                         </a>
-                      )}
-                      {!paymentDetails?.paypal_client_id && (
-                        <p className="text-[11px] text-slate-400">
-                          Opens PayPal to send payment directly to{' '}
-                          <strong className="text-white">{paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com'}</strong>.
-                          Please note your order number{' '}
-                          <strong className="text-white">#00{placedOrder.id}</strong> in the payment note so we can
-                          match it to your order.
-                        </p>
                       )}
                     </div>
                   )}
