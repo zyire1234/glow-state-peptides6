@@ -33,7 +33,7 @@ interface Order {
   customer_name: string;
   customer_email: string;
   customer_address: string;
-  payment_method: 'bank_transfer' | 'payid' | 'paypal';
+  payment_method: 'bank_transfer' | 'payid' | 'paypal_invoice';
   status: 'pending' | 'invoice_sent' | 'paid' | 'shipped' | 'cancelled';
   total_amount: number;
   created_at: string;
