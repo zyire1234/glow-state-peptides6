@@ -1005,9 +1005,13 @@ export default function App() {
                       <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
                     </div>
                   ) : (
-                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-2 text-slate-300 leading-relaxed">
                       <h5 className="font-bold text-purple-300">Pay with PayPal</h5>
-                      <p className="text-[10px] text-slate-400 mt-1">
+                      <p className="text-[10px] text-slate-400">
+                        A 3% PayPal processing fee is automatically added. Complete shipping details, then you
+                        will be directed to the payment method.
+                      </p>
+                      <p className="text-[10px] text-slate-400">
                         Express payment with Apple Pay available.
                       </p>
                     </div>
