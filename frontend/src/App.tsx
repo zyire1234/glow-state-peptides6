@@ -1005,8 +1005,8 @@ export default function App() {
                       <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
                     </div>
                   ) : (
-                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
-                      <h5 className="font-bold text-yellow-300">Pay with PayPal</h5>
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-purple-300">Pay with PayPal</h5>
                       <p className="text-[10px] text-slate-400 mt-1">
                         A 3% PayPal processing fee is included in the total below. Once you place your order,
                         you'll be taken to the PayPal payment step.
@@ -1181,8 +1181,8 @@ export default function App() {
                       </p>
                     </div>
                   ) : (
-                    <div className="bg-yellow-950/20 border border-yellow-700/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
-                      <h4 className="font-bold text-yellow-300">Pay with PayPal:</h4>
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
+                      <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
                       <p>
                         Complete your payment of{' '}
                         <strong className="text-white">${Number(placedOrder.total_amount).toFixed(2)} AUD</strong>{' '}
@@ -1209,7 +1209,7 @@ export default function App() {
                           href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block w-full text-center py-3 bg-[#ffc439] hover:brightness-95 text-[#003087] font-extrabold rounded-full text-sm transition-all"
+                          className="block w-full text-center py-3.5 bg-[#FFC220] hover:brightness-95 text-black font-bold rounded-xl text-sm transition-all"
                         >
                           Pay with PayPal
                         </a>
