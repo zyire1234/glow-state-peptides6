@@ -73,6 +73,7 @@ class Order(models.Model):
     PAYMENT_CHOICES = [
         ("bank_transfer", "Bank Transfer"),
         ("payid", "PayID"),
+        ("paypal", "PayPal"),
     ]
     STATUS_CHOICES = [
         ("pending", "Pending"),
