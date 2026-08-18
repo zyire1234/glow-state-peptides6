@@ -1243,6 +1243,19 @@ export default function App() {
         <AdminPanel onClose={() => setIsAdminOpen(false)} />
       )}
 
+      {/* Floating TikTok contact button */}
+      <a
+        href="https://www.tiktok.com/@glowstatepep"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Follow us on TikTok"
+        className="fixed bottom-24 right-5 z-40 h-14 w-14 rounded-full bg-black hover:bg-slate-800 shadow-lg shadow-black/40 flex items-center justify-center transition-transform hover:scale-105 border border-white/10"
+      >
+        <svg viewBox="0 0 448 512" className="h-6 w-6 fill-white" xmlns="http://www.w3.org/2000/svg">
+          <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"/>
+        </svg>
+      </a>
+
       {/* Floating WhatsApp contact button */}
       <a
         href="https://wa.me/61491186505?text=Hello%2C%20I%20would%20like%20to%20make%20an%20inquiry%20about%20your%20products."
