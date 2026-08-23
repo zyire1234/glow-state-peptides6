@@ -25,6 +25,9 @@ urlpatterns = [
     path("products", views.products_collection),
     path("products/<int:product_id>", views.product_detail),
 
+    # Coupons (additive)
+    path("coupons/validate", views.coupon_validate),
+
     # Orders
     path("orders", views.orders_collection),
     path("orders/<int:order_id>/status", views.order_update_status),
