@@ -60,6 +60,12 @@ export default function App() {
   // Checkout state
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
   const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid' | 'paypal_invoice'>('bank_transfer');
+
+  // Coupon code state
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_percent: number } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponChecking, setCouponChecking] = useState(false);
   const [shippingDetails, setShippingDetails] = useState({
     name: '',
     email: '',
@@ -179,7 +185,9 @@ export default function App() {
   };
 
   // Flat-rate shipping fee applied to every order once there's something in the cart.
-  // Orders over the free-shipping threshold ship free (express).
+  // Orders over the free-shipping threshold ship free (express). Threshold is
+  // checked against the pre-discount subtotal so a coupon can't be stacked
+  // with free shipping unless the order already qualified on its own.
   const SHIPPING_FEE = 10;
   const FREE_SHIPPING_THRESHOLD = 160;
   const getShippingFee = () => {
@@ -187,12 +195,57 @@ export default function App() {
     return getCartTotal() > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
   };
 
+  // Coupon code — validated against the backend on "Apply" (and re-checked
+  // there again on order submit), so an expired/invalid code never reduces
+  // the total the customer actually pays.
+  const getDiscountAmount = () => {
+    if (!appliedCoupon || cart.length === 0) return 0;
+    return getCartTotal() * (appliedCoupon.discount_percent / 100);
+  };
+
+  const getDiscountedSubtotal = () => {
+    return Math.max(0, getCartTotal() - getDiscountAmount());
+  };
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/coupons/validate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAppliedCoupon({ code: data.code, discount_percent: data.discount_percent });
+        setCouponError('');
+      } else {
+        setAppliedCoupon(null);
+        setCouponError(data.error || 'Invalid coupon code.');
+      }
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponError('Could not check that code. Please try again.');
+    } finally {
+      setCouponChecking(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  };
+
   // PayPal carries a 3% surcharge (covers PayPal's processing fees) on top
-  // of the subtotal + shipping. Bank Transfer and PayID remain fee-free.
+  // of the (discounted) subtotal + shipping. Bank Transfer and PayID remain fee-free.
   const PAYPAL_FEE_RATE = 0.03;
   const getPaypalFee = () => {
     if (cart.length === 0 || paymentMethod !== 'paypal_invoice') return 0;
-    return (getCartTotal() + getShippingFee()) * PAYPAL_FEE_RATE;
+    return (getDiscountedSubtotal() + getShippingFee()) * PAYPAL_FEE_RATE;
   };
 
   // Direct "pay now" link straight to the PayPal account on file — no
@@ -210,10 +263,10 @@ export default function App() {
     return `https://www.paypal.com/cgi-bin/webscr?${params.toString()}`;
   };
 
-  // Total the customer actually owes: subtotal + flat shipping fee, plus the
-  // PayPal surcharge if that's the selected payment route.
+  // Total the customer actually owes: (discounted) subtotal + flat shipping
+  // fee, plus the PayPal surcharge if that's the selected payment route.
   const getOrderTotal = () => {
-    return getCartTotal() + getShippingFee() + getPaypalFee();
+    return getDiscountedSubtotal() + getShippingFee() + getPaypalFee();
   };
 
   const getCartCount = () => {
@@ -239,6 +292,8 @@ export default function App() {
       customer_address: `${shippingDetails.address}, ${shippingDetails.state}, Postcode: ${shippingDetails.postcode}`,
       payment_method: paymentMethod,
       total_amount: orderTotal,
+      coupon_code: appliedCoupon?.code || '',
+      discount_amount: getDiscountAmount(),
       items: itemsPayload
     };
 
@@ -254,8 +309,19 @@ export default function App() {
         setPlacedOrder(orderData);
         setCheckoutStep('success');
         setCart([]); // Clear cart
+        handleRemoveCoupon(); // Reset coupon state for the next order
       } else {
-        alert('Failed to submit order request. Please review details and try again.');
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error && errData.error.toLowerCase().includes('coupon')) {
+          // The coupon expired/became invalid between "Apply" and "Place Order" —
+          // drop it and let the customer see the corrected total before retrying.
+          setAppliedCoupon(null);
+          setCouponError(errData.error);
+          setCheckoutStep('cart');
+          alert(`${errData.error} It's been removed — please review your total and try again.`);
+        } else {
+          alert('Failed to submit order request. Please review details and try again.');
+        }
       }
     } catch (err) {
       alert('Network failure. Could not connect to order dispatch server.');
@@ -898,9 +964,54 @@ export default function App() {
 
                   {cart.length > 0 && (
                     <div className="border-t border-white/10 pt-5 space-y-4">
+                      {/* Discount code */}
+                      <div className="space-y-1.5">
+                        {appliedCoupon ? (
+                          <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3.5 py-2.5">
+                            <span className="text-[11px] text-emerald-400 font-semibold">
+                              "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleRemoveCoupon}
+                              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={couponInput}
+                              onChange={(e) => { setCouponInput(e.target.value); setCouponError(''); }}
+                              placeholder="Discount code"
+                              className="flex-1 bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-purple-500 uppercase placeholder:normal-case"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleApplyCoupon}
+                              disabled={couponChecking || !couponInput.trim()}
+                              className="px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0"
+                            >
+                              {couponChecking ? '...' : 'Apply'}
+                            </button>
+                          </div>
+                        )}
+                        {couponError && (
+                          <p className="text-[10px] text-red-400">{couponError}</p>
+                        )}
+                      </div>
+
+                      {appliedCoupon && (
+                        <div className="flex justify-between items-center text-[11px] text-emerald-400">
+                          <span>Discount</span>
+                          <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center font-mono font-bold text-white text-base">
                         <span>ESTIMATED TOTAL:</span>
-                        <span className="text-purple-400">${getCartTotal().toFixed(2)} AUD</span>
+                        <span className="text-purple-400">${getDiscountedSubtotal().toFixed(2)} AUD</span>
                       </div>
                       {getCartTotal() > FREE_SHIPPING_THRESHOLD ? (
                         <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
@@ -1097,6 +1208,12 @@ export default function App() {
                         <span>Subtotal</span>
                         <span className="font-mono">${getCartTotal().toFixed(2)} AUD</span>
                       </div>
+                      {appliedCoupon && (
+                        <div className="flex justify-between text-emerald-400">
+                          <span>Discount ({appliedCoupon.code})</span>
+                          <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-400">
                         <span>Shipping</span>
                         <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
