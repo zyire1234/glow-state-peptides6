@@ -69,6 +69,33 @@ class Product(models.Model):
         }
 
 
+class Coupon(models.Model):
+    """Discount codes. `expires_at` is set once, at creation time, and never
+    moves — that's what makes a code like SALE30 "valid for 1 week only":
+    is_valid() compares against the real clock, so the code stops working on
+    its own the moment that timestamp passes, no cron job or admin action
+    required."""
+
+    code = models.CharField(max_length=50, unique=True)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.code} ({self.discount_percent}% off)"
+
+    def is_valid(self):
+        return self.is_active and timezone.now() < self.expires_at
+
+    def to_dict(self):
+        return {
+            "code": self.code,
+            "discount_percent": float(self.discount_percent),
+            "expires_at": self.expires_at.isoformat(),
+        }
+
+
 class Order(models.Model):
     PAYMENT_CHOICES = [
         ("bank_transfer", "Bank Transfer"),
@@ -93,6 +120,13 @@ class Order(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # --- Coupon / discount (additive) -------------------------------------
+    # Snapshot of whatever coupon was applied at checkout — kept even if the
+    # coupon later expires or is deleted, so past orders still show what
+    # discount the customer actually received.
+    coupon_code = models.CharField(max_length=50, blank=True, default="")
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
     def to_dict(self, include_items=True):
         data = {
             "id": self.id,
@@ -103,6 +137,8 @@ class Order(models.Model):
             "status": self.status,
             "total_amount": float(self.total_amount),
             "transaction_id": self.transaction_id,
+            "coupon_code": self.coupon_code,
+            "discount_amount": float(self.discount_amount),
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "created_at": self.created_at.isoformat(),
         }
