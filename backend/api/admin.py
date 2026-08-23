@@ -1,6 +1,10 @@
 from django.contrib import admin
 from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment
 
+# Note: Coupon is intentionally NOT registered here — SALE30 is a fixed,
+# code-defined discount (30% off, auto-expires 7 days after the migration
+# that creates it runs). It isn't meant to be edited from the admin panel.
+
 admin.site.register(AdminUser)
 admin.site.register(AdminSession)
 admin.site.register(Product)
