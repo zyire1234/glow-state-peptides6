@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
 from .email_utils import send_branded_email
-from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment
+from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
 
@@ -302,7 +302,38 @@ def product_detail(request, product_id):
 
 
 # ---------------------------------------------------------------------------
-# 3. Orders
+# 3. Coupons (additive)
+# ---------------------------------------------------------------------------
+
+def _lookup_valid_coupon(raw_code):
+    """Returns (coupon, error_message). error_message is None when the code
+    is real and currently valid (active + not past its expires_at)."""
+    code = (raw_code or "").strip().upper()
+    if not code:
+        return None, "Coupon code is required."
+    coupon = Coupon.objects.filter(code=code).first()
+    if not coupon:
+        return None, "That coupon code doesn't exist."
+    if not coupon.is_valid():
+        return None, "That coupon code has expired."
+    return coupon, None
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def coupon_validate(request):
+    """POST /api/coupons/validate  { "code": "SALE30" }
+    Used by the storefront to check a code (and get its discount %) before
+    the customer submits their order."""
+    data = _body(request)
+    coupon, error = _lookup_valid_coupon(data.get("code"))
+    if error:
+        return JsonResponse({"error": error}, status=404)
+    return JsonResponse(coupon.to_dict())
+
+
+# ---------------------------------------------------------------------------
+# 4. Orders
 # ---------------------------------------------------------------------------
 
 REQUIRED_ORDER_FIELDS = [
@@ -324,6 +355,17 @@ def orders_collection(request):
                 status=400,
             )
 
+        # A coupon code is optional, but if one was applied on the frontend
+        # it's re-checked here (active + not expired) before the order is
+        # created — so a code that expired between "Apply" and "Place Order"
+        # can't sneak a discount through.
+        coupon_code = (data.get("coupon_code") or "").strip().upper()
+        discount_amount = data.get("discount_amount") or 0
+        if coupon_code:
+            coupon, error = _lookup_valid_coupon(coupon_code)
+            if error:
+                return JsonResponse({"error": error}, status=400)
+
         with transaction.atomic():
             order = Order.objects.create(
                 customer_name=data["customer_name"],
@@ -331,6 +373,8 @@ def orders_collection(request):
                 customer_address=data["customer_address"],
                 payment_method=data["payment_method"],
                 total_amount=data["total_amount"],
+                coupon_code=coupon_code,
+                discount_amount=discount_amount if coupon_code else 0,
                 status="pending",
             )
             for item in items:
@@ -399,7 +443,7 @@ def order_update_status(request, order_id):
 
 
 # ---------------------------------------------------------------------------
-# 4. Activity log
+# 5. Activity log
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -411,7 +455,7 @@ def activities_list(request):
 
 
 # ---------------------------------------------------------------------------
-# 5. Email preview
+# 6. Email preview
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -430,7 +474,7 @@ def email_preview(request):
 
 
 # ---------------------------------------------------------------------------
-# 6. Deliveries (additive — admin managed)
+# 7. Deliveries (additive — admin managed)
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -513,7 +557,7 @@ def delivery_update_status(request, delivery_id):
 
 
 # ---------------------------------------------------------------------------
-# 7. Customers (derived from order history — additive)
+# 8. Customers (derived from order history — additive)
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -543,7 +587,7 @@ def customers_list(request):
 
 
 # ---------------------------------------------------------------------------
-# 8. Sales analytics (additive)
+# 9. Sales analytics (additive)
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -584,7 +628,7 @@ def analytics_sales(request):
 
 
 # ---------------------------------------------------------------------------
-# 9. Payment details (bank transfer + PayPal) — publicly readable, editable
+# 10. Payment details (bank transfer + PayPal) — publicly readable, editable
 #    only via Django admin as required.
 # ---------------------------------------------------------------------------
 
@@ -596,7 +640,7 @@ def payment_details(request):
 
 
 # ---------------------------------------------------------------------------
-# 10. PayPal Checkout (real PayPal Orders v2 API — not a placeholder)
+# 11. PayPal Checkout (real PayPal Orders v2 API — not a placeholder)
 # ---------------------------------------------------------------------------
 
 @csrf_exempt
@@ -666,7 +710,7 @@ def paypal_capture_order(request):
 
 
 # ---------------------------------------------------------------------------
-# 11. Django REST Framework ModelViewSets — /api/products/, /api/orders/,
+# 12. Django REST Framework ModelViewSets — /api/products/, /api/orders/,
 #     /api/payments/. These sit alongside the plain-view endpoints above
 #     (which the existing storefront checkout/admin UI already uses at
 #     non-trailing-slash paths) and give a fully DRF-powered REST surface
