@@ -408,85 +408,17 @@ export default function App() {
       <main className="flex-1">
         {/* HOME PAGE */}
         {activePage === 'home' && (
-          <div className="animate-fade-in">
-            <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-20 space-y-8">
-              <Logo size={140} />
-              <h1 className="font-display font-extrabold text-2xl sm:text-3xl lg:text-4xl text-white tracking-tight leading-[1.15] max-w-3xl uppercase">
-                Research Peptides Australia — Brisbane, QLD
-              </h1>
-              <p className="max-w-xl text-slate-300 text-sm sm:text-base leading-relaxed">
-                Glow State Peptides delivers ultra-pure research peptides Australia-wide, shipped from Brisbane, QLD. Third-party tested. Australian owned and operated.
-              </p>
-              <button
-                onClick={() => setActivePage('shop')}
-                className="py-3 px-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-purple-500/10 cursor-pointer"
-              >
-                Enter Shop (18+)
-              </button>
-            </div>
-
-            {/* SEO content section — real, crawlable text describing the
-                business for search engines. Keep this visible (not hidden),
-                accurate, and free of medical/therapeutic claims. */}
-            <section className="max-w-4xl mx-auto px-4 pb-24 space-y-10 text-left">
-              <div className="space-y-3">
-                <h2 className="font-display font-bold text-xl text-white uppercase tracking-wide">
-                  Buy Research Peptides in Australia
-                </h2>
-                <p className="text-slate-400 text-sm leading-relaxed">
-                  Glow State Peptides is a Brisbane, Queensland based supplier of research peptides for
-                  laboratory and scientific use. We supply commonly studied research compounds, including
-                  GHK-Cu, BPC-157, and TB-500, to researchers across Australia. Every batch is third-party
-                  tested, with orders dispatched Australia-wide from our Brisbane facility.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <h2 className="font-display font-bold text-xl text-white uppercase tracking-wide">
-                  Why Choose an Australian-Based Peptide Supplier
-                </h2>
-                <p className="text-slate-400 text-sm leading-relaxed">
-                  Ordering research peptides from a local Australian supplier means faster domestic
-                  shipping, no customs delays, and no international freight uncertainty. As a Brisbane
-                  based supplier, Glow State Peptides dispatches orders within 24 hours to researchers
-                  in Queensland and across every state and territory in Australia.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <h2 className="font-display font-bold text-xl text-white uppercase tracking-wide">
-                  Frequently Asked Questions
-                </h2>
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-display font-semibold text-white text-sm">
-                      Do you ship research peptides Australia-wide?
-                    </h3>
-                    <p className="text-slate-400 text-sm leading-relaxed">
-                      Yes. We dispatch from Brisbane, QLD to every state and territory in Australia,
-                      with orders typically shipped within 24 hours.
-                    </p>
-                  </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-white text-sm">
-                      Are your peptides third-party tested?
-                    </h3>
-                    <p className="text-slate-400 text-sm leading-relaxed">
-                      Yes, every batch is independently tested, with documentation available on request.
-                    </p>
-                  </div>
-                  <div>
-                    <h3 className="font-display font-semibold text-white text-sm">
-                      What research peptides do you supply?
-                    </h3>
-                    <p className="text-slate-400 text-sm leading-relaxed">
-                      Our catalog includes commonly studied compounds such as GHK-Cu, BPC-157, and TB-500,
-                      among others. Browse the full range in our shop.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
+          <div className="animate-fade-in min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-20 space-y-8">
+            <Logo size={140} />
+            <p className="max-w-xl text-slate-300 text-sm sm:text-base leading-relaxed">
+              Glow State Peptides delivers ultra-pure compounds Australia-wide. Third-party tested. Australian owned and operated.
+            </p>
+            <button
+              onClick={() => setActivePage('shop')}
+              className="py-3 px-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-purple-500/10 cursor-pointer"
+            >
+              Enter Shop (18+)
+            </button>
           </div>
         )}
 
