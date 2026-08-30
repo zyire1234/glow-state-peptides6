@@ -100,18 +100,46 @@ export default function App() {
   // id/name/price of the product coming from the backend-fetched `products`
   // data (falls back to discount_price when the product is on sale, same
   // logic used everywhere else in this file for the displayed price).
+  // Uses the `contents` array schema (not just top-level content_id) so
+  // TikTok can match this event to a Catalog product entry.
   useEffect(() => {
     if (!selectedProduct) return;
     const price = selectedProduct.is_discounted && selectedProduct.discount_price
       ? selectedProduct.discount_price
       : selectedProduct.price;
     trackTikTokEvent('ViewContent', {
-      content_id: selectedProduct.id,
-      content_name: selectedProduct.name,
+      contents: [{
+        content_id: String(selectedProduct.id),
+        content_name: selectedProduct.name,
+        content_category: selectedProduct.category,
+        quantity: 1,
+        price: price,
+      }],
+      content_type: 'product',
       value: price,
       currency: 'AUD',
     });
   }, [selectedProduct]);
+
+  // TikTok Pixel — ViewContent for the shop/listing page itself (separate
+  // from the single-product modal above). Fires once each time the shop
+  // page is opened (not on every category filter click, to avoid event
+  // spam), using every real product currently loaded from the backend.
+  useEffect(() => {
+    if (activePage !== 'shop' || products.length === 0) return;
+    const items = products.map(p => {
+      const price = p.is_discounted && p.discount_price ? p.discount_price : p.price;
+      return { content_id: String(p.id), content_name: p.name, content_category: p.category, quantity: 1, price };
+    });
+    const totalValue = items.reduce((sum, item) => sum + item.price, 0);
+    trackTikTokEvent('ViewContent', {
+      contents: items,
+      content_type: 'product',
+      value: totalValue,
+      currency: 'AUD',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, products.length]);
 
   const fetchPaymentDetails = async (attempt = 0) => {
     try {
@@ -182,13 +210,21 @@ export default function App() {
 
     // TikTok Pixel — AddToCart. Fires exactly once per call to this function
     // (i.e. once per actual "Add to Cart" click), using the real product that
-    // was clicked — never on page load, never per render.
+    // was clicked — never on page load, never per render. Uses the `contents`
+    // array schema so TikTok can match this event to a Catalog product entry.
     const price = product.is_discounted && product.discount_price
       ? product.discount_price
       : product.price;
     trackTikTokEvent('AddToCart', {
-      content_id: product.id,
-      value: price,
+      contents: [{
+        content_id: String(product.id),
+        content_name: product.name,
+        content_category: product.category,
+        quantity: quantity,
+        price: price,
+      }],
+      content_type: 'product',
+      value: price * quantity,
       currency: 'AUD',
     });
   };
@@ -1069,8 +1105,11 @@ export default function App() {
                           trackTikTokEvent('InitiateCheckout', {
                             value: getOrderTotal(),
                             currency: 'AUD',
+                            content_type: 'product',
                             contents: cart.map(item => ({
-                              content_id: item.product.id,
+                              content_id: String(item.product.id),
+                              content_name: item.product.name,
+                              content_category: item.product.category,
                               quantity: item.quantity,
                               price: item.product.is_discounted && item.product.discount_price
                                 ? item.product.discount_price
@@ -1381,8 +1420,10 @@ export default function App() {
                                   value: Number(updatedOrder.total_amount),
                                   currency: 'AUD',
                                   order_id: updatedOrder.id,
+                                  content_type: 'product',
                                   contents: (updatedOrder.items || []).map((item: any) => ({
-                                    content_id: item.product_id,
+                                    content_id: String(item.product_id),
+                                    content_name: item.product_name,
                                     quantity: item.quantity,
                                     price: item.price,
                                   })),
