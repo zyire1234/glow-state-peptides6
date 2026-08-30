@@ -9,6 +9,7 @@ import { ReconstitutionCalculator } from './components/ReconstitutionCalculator'
 import { AdminPanel } from './components/AdminPanel';
 import { PayPalButton } from './components/PayPalButton';
 import { API_BASE_URL } from './lib/apiConfig';
+import { trackTikTokEvent } from './lib/tiktokEvents';
 // Connected to the real Django + SQLite backend. All `/api/...` calls below
 // use the browser's native `fetch` and are routed to the backend via the
 // Netlify redirect configured in netlify.toml (see backend/README.md).
@@ -93,6 +94,25 @@ export default function App() {
     fetchPaymentDetails();
   }, [isAdminOpen]); // Refetch in case admin updated bank/PayPal details
 
+  // TikTok Pixel — ViewContent. This app shows product detail as a modal
+  // (`selectedProduct`) rather than separate product pages, so "viewing a
+  // product page" is represented here by that modal opening. Uses the real
+  // id/name/price of the product coming from the backend-fetched `products`
+  // data (falls back to discount_price when the product is on sale, same
+  // logic used everywhere else in this file for the displayed price).
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const price = selectedProduct.is_discounted && selectedProduct.discount_price
+      ? selectedProduct.discount_price
+      : selectedProduct.price;
+    trackTikTokEvent('ViewContent', {
+      content_id: selectedProduct.id,
+      content_name: selectedProduct.name,
+      value: price,
+      currency: 'AUD',
+    });
+  }, [selectedProduct]);
+
   const fetchPaymentDetails = async (attempt = 0) => {
     try {
       const res = await fetch(`${API_BASE_URL}/payment-details`);
@@ -159,6 +179,18 @@ export default function App() {
       return [...prev, { product, quantity }];
     });
     setIsCartOpen(true);
+
+    // TikTok Pixel — AddToCart. Fires exactly once per call to this function
+    // (i.e. once per actual "Add to Cart" click), using the real product that
+    // was clicked — never on page load, never per render.
+    const price = product.is_discounted && product.discount_price
+      ? product.discount_price
+      : product.price;
+    trackTikTokEvent('AddToCart', {
+      content_id: product.id,
+      value: price,
+      currency: 'AUD',
+    });
   };
 
   const removeFromCart = (productId: number) => {
@@ -1029,7 +1061,24 @@ export default function App() {
                       </div>
 
                       <button
-                        onClick={() => setCheckoutStep('details')}
+                        onClick={() => {
+                          // TikTok Pixel — InitiateCheckout. Fires only when the
+                          // customer actually clicks through from cart review to
+                          // the shipping/payment details step, using the real
+                          // cart contents and the actual order total at that moment.
+                          trackTikTokEvent('InitiateCheckout', {
+                            value: getOrderTotal(),
+                            currency: 'AUD',
+                            contents: cart.map(item => ({
+                              content_id: item.product.id,
+                              quantity: item.quantity,
+                              price: item.product.is_discounted && item.product.discount_price
+                                ? item.product.discount_price
+                                : item.product.price,
+                            })),
+                          });
+                          setCheckoutStep('details');
+                        }}
                         className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/10 cursor-pointer"
                       >
                         <span>Checkout</span>
@@ -1315,6 +1364,30 @@ export default function App() {
                             onSuccess={(updatedOrder) => {
                               setPaypalError('');
                               setPlacedOrder(updatedOrder);
+
+                              // TikTok Pixel — CompletePayment. This fires ONLY
+                              // here, inside PayPalButton's onSuccess callback,
+                              // which only runs after POST /api/paypal/capture-order
+                              // has confirmed PayPal actually returned status
+                              // "COMPLETED" (see backend/api/views.py:paypal_capture_order).
+                              // It never fires just from reaching the checkout/
+                              // success screen. Deduped via sessionStorage keyed to
+                              // this order's id + transaction_id so it cannot fire
+                              // twice for the same completed payment.
+                              const dedupeKey = `ttq_complete_payment_${updatedOrder.id}_${updatedOrder.transaction_id}`;
+                              if (!sessionStorage.getItem(dedupeKey)) {
+                                sessionStorage.setItem(dedupeKey, '1');
+                                trackTikTokEvent('CompletePayment', {
+                                  value: Number(updatedOrder.total_amount),
+                                  currency: 'AUD',
+                                  order_id: updatedOrder.id,
+                                  contents: (updatedOrder.items || []).map((item: any) => ({
+                                    content_id: item.product_id,
+                                    quantity: item.quantity,
+                                    price: item.price,
+                                  })),
+                                });
+                              }
                             }}
                             onError={(message) => setPaypalError(message)}
                           />
