@@ -56,6 +56,11 @@ urlpatterns = [
     # PayPal Checkout (real Orders v2 API)
     path("paypal/create-order", views.paypal_create_order),
     path("paypal/capture-order", views.paypal_capture_order),
+
+    # Website Cleaning / Archive (additive, admin only)
+    path("archive", views.archive_collection),
+    path("archive/<int:archive_id>/download", views.archive_download),
+    path("archive/<int:archive_id>", views.archive_delete),
 ]
 
 # Django REST Framework ModelViewSet routes (trailing-slash REST convention):
