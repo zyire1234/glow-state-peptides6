@@ -300,3 +300,47 @@ class Activity(models.Model):
             "description": self.description,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class Archive(models.Model):
+    """Website Cleaning / Archive feature (additive, admin-only).
+
+    A simple manual "cold storage" snapshot: when an admin archives old
+    records, the matching rows are serialized into `data` as JSON and then
+    removed from their live tables (Order/OrderItem/Payment/Delivery for
+    the "orders" category, Activity — which also covers logged
+    notifications/emails — for the "activities" category). The admin can
+    later download the JSON snapshot or permanently delete it to free up
+    database storage. No automatic scheduling — every archive run is a
+    deliberate admin action.
+    """
+
+    CATEGORY_CHOICES = [
+        ("orders", "Orders"),
+        ("activities", "Activity Logs (incl. Notifications / Emails)"),
+    ]
+
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
+    item_count = models.IntegerField(default=0)
+    data = models.TextField(blank=True, default="[]")
+    cutoff_date = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Only records created before this date were included in this archive.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-id"]
+
+    def __str__(self):
+        return f"Archive #{self.id} — {self.get_category_display()} ({self.item_count} records)"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "category": self.category,
+            "category_display": self.get_category_display(),
+            "item_count": self.item_count,
+            "cutoff_date": self.cutoff_date.isoformat() if self.cutoff_date else None,
+            "created_at": self.created_at.isoformat(),
+        }
