@@ -452,16 +452,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         },
         body: JSON.stringify({ category: archiveCategory, before_date: archiveBeforeDate })
       });
-      const data = await res.json();
-      if (res.ok) {
+      // The backend always replies with JSON, but if this endpoint isn't
+      // deployed yet (or an unexpected server error page comes back
+      // instead), res.json() throws — catch that separately so the admin
+      // sees a useful status code instead of a generic "network" message.
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (res.ok && data) {
         setArchiveMessage({ type: 'success', text: `Archived ${data.item_count} record(s).` });
         setArchiveBeforeDate('');
         fetchAdminData();
       } else {
-        setArchiveMessage({ type: 'error', text: data.error || 'Could not create archive.' });
+        setArchiveMessage({
+          type: 'error',
+          text: data?.error || `Could not create archive (server responded with status ${res.status}). If this just started happening, the backend may still need to be redeployed with the archive feature's code.`
+        });
       }
     } catch (err) {
-      setArchiveMessage({ type: 'error', text: 'Network failure creating archive.' });
+      setArchiveMessage({ type: 'error', text: 'Could not reach the backend server — check your connection and try again.' });
     } finally {
       setArchiveBusy(false);
     }
@@ -473,7 +485,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!res.ok) {
-        alert('Could not download this archive.');
+        alert(`Could not download this archive (server responded with status ${res.status}).`);
         return;
       }
       const blob = await res.blob();
@@ -486,7 +498,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert('Network failure downloading archive.');
+      alert('Could not reach the backend server — check your connection and try again.');
     }
   };
 
@@ -500,10 +512,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       if (res.ok) {
         fetchAdminData();
       } else {
-        alert('Could not delete this archive.');
+        alert(`Could not delete this archive (server responded with status ${res.status}).`);
       }
     } catch (err) {
-      alert('Network failure deleting archive.');
+      alert('Could not reach the backend server — check your connection and try again.');
     }
   };
 
