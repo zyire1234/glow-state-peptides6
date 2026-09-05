@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, ClipboardList, Package, Activity as ActivityIcon, Mail, 
-  LogIn, LogOut, Plus, Trash2, Edit, Check, AlertCircle, RefreshCw, X, TrendingUp, DollarSign, KeyRound
+  LogIn, LogOut, Plus, Trash2, Edit, Check, AlertCircle, RefreshCw, X, TrendingUp, DollarSign, KeyRound,
+  Archive as ArchiveIcon, Download
 } from 'lucide-react';
 import { API_BASE_URL } from '../lib/apiConfig';
 // Connected to the real Django + SQLite backend. All API calls below use the
@@ -58,6 +59,18 @@ interface SimulatedEmail {
   error?: string | null;
 }
 
+// Website Cleaning / Archive feature (additive) — a manual snapshot of old
+// orders or activity/notification/email logs, moved out of the live tables
+// and stored as a single downloadable JSON blob until the admin deletes it.
+interface ArchiveRecord {
+  id: number;
+  category: 'orders' | 'activities';
+  category_display: string;
+  item_count: number;
+  cutoff_date: string | null;
+  created_at: string;
+}
+
 interface AdminPanelProps {
   onClose: () => void;
 }
@@ -69,7 +82,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [loginError, setLoginError] = useState<string>('');
   const [token, setToken] = useState<string>('');
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'activities' | 'emails' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'activities' | 'emails' | 'archive' | 'settings'>('dashboard');
 
   // Admin states
   const [products, setProducts] = useState<Product[]>([]);
@@ -77,6 +90,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [emails, setEmails] = useState<SimulatedEmail[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+
+  // Website Cleaning / Archive state — additive
+  const [archives, setArchives] = useState<ArchiveRecord[]>([]);
+  const [archiveCategory, setArchiveCategory] = useState<'orders' | 'activities'>('orders');
+  const [archiveBeforeDate, setArchiveBeforeDate] = useState<string>('');
+  const [archiveBusy, setArchiveBusy] = useState<boolean>(false);
+  const [archiveMessage, setArchiveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Form states for Add/Edit Product
   const [showProductModal, setShowProductModal] = useState<boolean>(false);
@@ -167,6 +187,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       } else if (activeTab === 'emails') {
         const res = await fetch(`${API_BASE_URL}/email-preview`, { headers });
         if (res.ok) setEmails(await res.json());
+      } else if (activeTab === 'archive') {
+        const res = await fetch(`${API_BASE_URL}/archive`, { headers });
+        if (res.ok) setArchives(await res.json());
       }
     } catch (err) {
       console.error('Error fetching admin details', err);
@@ -405,6 +428,85 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     }
   };
 
+  // Website Cleaning / Archive actions — additive
+  const createArchive = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setArchiveMessage(null);
+
+    if (!archiveBeforeDate) {
+      setArchiveMessage({ type: 'error', text: 'Choose a cutoff date first.' });
+      return;
+    }
+    const confirmText = archiveCategory === 'orders'
+      ? `Archive all Paid / Shipped / Cancelled orders placed before ${archiveBeforeDate}? They will be moved out of the live Orders list.`
+      : `Archive all activity, notification, and email logs recorded before ${archiveBeforeDate}? They will be moved out of the live Activity Logs.`;
+    if (!confirm(confirmText)) return;
+
+    setArchiveBusy(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/archive`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ category: archiveCategory, before_date: archiveBeforeDate })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setArchiveMessage({ type: 'success', text: `Archived ${data.item_count} record(s).` });
+        setArchiveBeforeDate('');
+        fetchAdminData();
+      } else {
+        setArchiveMessage({ type: 'error', text: data.error || 'Could not create archive.' });
+      }
+    } catch (err) {
+      setArchiveMessage({ type: 'error', text: 'Network failure creating archive.' });
+    } finally {
+      setArchiveBusy(false);
+    }
+  };
+
+  const downloadArchive = async (archive: ArchiveRecord) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}/download`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) {
+        alert('Could not download this archive.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `archive-${archive.category}-${archive.id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Network failure downloading archive.');
+    }
+  };
+
+  const deleteArchive = async (archive: ArchiveRecord) => {
+    if (!confirm(`Permanently delete this archive of ${archive.item_count} record(s)? This cannot be undone — download it first if you need a copy.`)) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchAdminData();
+      } else {
+        alert('Could not delete this archive.');
+      }
+    } catch (err) {
+      alert('Network failure deleting archive.');
+    }
+  };
+
   // Stats calculators
   const getTotalEarnings = () => {
     return orders
@@ -585,6 +687,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
             <span>Email Outbox Simulator</span>
           </button>
           <button
+            onClick={() => setActiveTab('archive')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+              activeTab === 'archive'
+                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+            }`}
+          >
+            <ArchiveIcon className="h-4 w-4" />
+            <span>Website Cleaning / Archive</span>
+          </button>
+          <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
               activeTab === 'settings'
@@ -601,7 +714,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         <main className="flex-1 overflow-y-auto p-6 bg-[#050510]">
           {/* Mobile Tab Selector */}
           <div className="md:hidden flex gap-2 overflow-x-auto pb-4 mb-2">
-            {(['dashboard', 'orders', 'products', 'activities', 'emails', 'settings'] as const).map(tab => (
+            {(['dashboard', 'orders', 'products', 'activities', 'emails', 'archive', 'settings'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -997,6 +1110,110 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tab 6: Website Cleaning / Archive */}
+          {activeTab === 'archive' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Website Cleaning / Archive</h2>
+                <p className="text-slate-400 text-xs mt-1">
+                  Move old data out of the live database into a downloadable snapshot to free up storage. This is a manual, one-time action — nothing is archived automatically.
+                </p>
+              </div>
+
+              {/* Create archive form */}
+              <form onSubmit={createArchive} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+                {archiveMessage && (
+                  <div className={`rounded-xl p-3 flex items-center gap-2.5 text-xs ${
+                    archiveMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                  }`}>
+                    {archiveMessage.type === 'success' ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
+                    <span>{archiveMessage.text}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Data to Archive</label>
+                    <select
+                      value={archiveCategory}
+                      onChange={(e) => setArchiveCategory(e.target.value as 'orders' | 'activities')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="orders">Orders (Paid / Shipped / Cancelled only)</option>
+                      <option value="activities">Notifications, Emails &amp; Activity Logs</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Archive Everything Before</label>
+                    <input
+                      type="date"
+                      required
+                      value={archiveBeforeDate}
+                      onChange={(e) => setArchiveBeforeDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-slate-500 text-[11px]">
+                  {archiveCategory === 'orders'
+                    ? 'Only orders already marked Paid, Shipped, or Cancelled are eligible — Pending and Invoice Sent orders are never archived, so nothing awaiting action can disappear.'
+                    : 'Covers every entry in the Activity Logs tab, including logged notification/email sends and admin actions.'}
+                </p>
+
+                <button
+                  type="submit"
+                  disabled={archiveBusy}
+                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <ArchiveIcon className="h-4 w-4" />
+                  {archiveBusy ? 'Archiving…' : 'Archive Old Data'}
+                </button>
+              </form>
+
+              {/* Existing archives list */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg divide-y divide-slate-800">
+                <h3 className="text-slate-400 text-[11px] font-bold uppercase tracking-wider pb-3">Stored Archives</h3>
+                {archives.map(archive => (
+                  <div key={archive.id} className="py-3.5 first:pt-0 last:pb-0 flex flex-wrap justify-between items-center gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="flex gap-2 items-center">
+                        <span className="bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-mono font-bold text-[9px] uppercase tracking-wider">
+                          {archive.category_display}
+                        </span>
+                        <span className="text-slate-200 font-semibold">{archive.item_count} record(s)</span>
+                      </div>
+                      <p className="text-slate-500 font-mono text-[10px]">
+                        Created before {archive.cutoff_date ? new Date(archive.cutoff_date).toLocaleDateString() : '—'} · Archived on {new Date(archive.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => downloadArchive(archive)}
+                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg text-[11px] font-semibold transition-all border border-white/10 cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Download
+                      </button>
+                      <button
+                        onClick={() => deleteArchive(archive)}
+                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 rounded-lg text-[11px] font-semibold transition-all border border-white/10 hover:border-rose-900/30 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {archives.length === 0 && (
+                  <p className="text-slate-500 text-xs text-center py-20">No archives yet. Use the form above to archive old orders or logs.</p>
+                )}
               </div>
             </div>
           )}
