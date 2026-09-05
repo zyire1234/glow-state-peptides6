@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment
+from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Archive
 
 # Note: Coupon is intentionally NOT registered here — SALE30 is a fixed,
 # code-defined discount (30% off, auto-expires 7 days after the migration
@@ -13,6 +13,17 @@ admin.site.register(OrderItem)
 admin.site.register(Payment)
 admin.site.register(Delivery)
 admin.site.register(Activity)
+
+
+@admin.register(Archive)
+class ArchiveAdmin(admin.ModelAdmin):
+    """Read-only-ish: archives are created/downloaded/deleted from the
+    Admin Panel UI (POST/GET/DELETE /api/archive), not hand-edited here."""
+    list_display = ("id", "category", "item_count", "cutoff_date", "created_at")
+    readonly_fields = ("category", "item_count", "data", "cutoff_date", "created_at")
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(PaymentDetails)
