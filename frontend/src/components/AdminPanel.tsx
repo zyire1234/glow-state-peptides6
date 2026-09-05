@@ -1120,7 +1120,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
               <div>
                 <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Website Cleaning / Archive</h2>
                 <p className="text-slate-400 text-xs mt-1">
-                  Move old data out of the live database into a downloadable snapshot to free up storage. This is a manual, one-time action — nothing is archived automatically.
+                  Move old data out of the live database into a downloadable snapshot to free up storage.
                 </p>
               </div>
 
