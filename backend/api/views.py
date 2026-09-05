@@ -1,7 +1,7 @@
 import base64
 import binascii
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.mail import send_mail
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
 from .email_utils import send_branded_email
-from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon
+from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon, Archive
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
 
@@ -869,3 +869,122 @@ class PaymentViewSet(viewsets.ModelViewSet):
             f"Admin recorded a {payment.get_status_display().lower()} payment of "
             f"${float(payment.amount):.2f} AUD for order #{payment.order_id}.",
         )
+
+
+# ---------------------------------------------------------------------------
+# 13. Website Cleaning / Archive (additive — admin only)
+#
+# Simple, manual "cold storage" for old data. An admin picks a category and
+# a cutoff date; matching records are serialized to JSON and removed from
+# their live tables, then stored as a single Archive row. The admin can
+# download that JSON snapshot at any time, or permanently delete it to free
+# up database storage. Nothing here runs automatically — every archive run
+# and every permanent delete is a deliberate admin action.
+# ---------------------------------------------------------------------------
+
+ARCHIVABLE_ORDER_STATUSES = ["paid", "shipped", "cancelled"]
+
+
+def _parse_cutoff_date(raw_date):
+    """Parses a 'YYYY-MM-DD' string into an aware end-of-day-exclusive
+    datetime (i.e. records created before midnight on that date)."""
+    try:
+        naive = datetime.strptime(raw_date, "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return None
+    return timezone.make_aware(naive) if timezone.is_naive(naive) else naive
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+@require_admin
+def archive_collection(request):
+    if request.method == "GET":
+        archives = Archive.objects.all().order_by("-id")
+        return JsonResponse([a.to_dict() for a in archives], safe=False)
+
+    # POST — create a new archive snapshot and remove the originals.
+    data = _body(request)
+    category = data.get("category")
+    before_date = data.get("before_date")
+
+    if category not in ("orders", "activities"):
+        return JsonResponse({"error": "category must be 'orders' or 'activities'."}, status=400)
+
+    cutoff = _parse_cutoff_date(before_date)
+    if cutoff is None:
+        return JsonResponse({"error": "before_date is required, in YYYY-MM-DD format."}, status=400)
+
+    with transaction.atomic():
+        if category == "orders":
+            # Only orders in a final state are archived, so nothing still
+            # awaiting admin action (pending / invoice sent) ever
+            # disappears from the live Orders list.
+            queryset = (
+                Order.objects.filter(created_at__lt=cutoff, status__in=ARCHIVABLE_ORDER_STATUSES)
+                .prefetch_related("items")
+                .order_by("id")
+            )
+            snapshot = [o.to_dict() for o in queryset]
+            matched_ids = list(queryset.values_list("id", flat=True))
+            # Deleting the Order cascades to its OrderItem, Payment, and
+            # Delivery rows automatically (see models.py on_delete=CASCADE).
+            Order.objects.filter(id__in=matched_ids).delete()
+        else:
+            # "activities" covers the Activity log, which already includes
+            # notification/email-send records (type="email_sent") alongside
+            # other system events — archiving it satisfies "notifications,
+            # emails, and other stored records" in one simple category.
+            queryset = Activity.objects.filter(created_at__lt=cutoff).order_by("id")
+            snapshot = [a.to_dict() for a in queryset]
+            matched_ids = list(queryset.values_list("id", flat=True))
+            Activity.objects.filter(id__in=matched_ids).delete()
+
+        archive = Archive.objects.create(
+            category=category,
+            item_count=len(snapshot),
+            data=json.dumps(snapshot),
+            cutoff_date=cutoff,
+        )
+
+    # Logged after the archive is created (and, for the "activities" case,
+    # after the old activity rows are already gone) so this note about the
+    # cleanup itself is never swept up into the very archive it describes.
+    log_activity(
+        "archive_created",
+        f"Admin archived {archive.item_count} {category} record(s) created before {before_date}.",
+    )
+    return JsonResponse(archive.to_dict(), status=201)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+@require_admin
+def archive_download(request, archive_id):
+    try:
+        archive = Archive.objects.get(id=archive_id)
+    except Archive.DoesNotExist:
+        return JsonResponse({"error": "Archive not found."}, status=404)
+
+    response = HttpResponse(archive.data, content_type="application/json")
+    filename = f"archive-{archive.category}-{archive.id}.json"
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+@require_admin
+def archive_delete(request, archive_id):
+    try:
+        archive = Archive.objects.get(id=archive_id)
+    except Archive.DoesNotExist:
+        return JsonResponse({"error": "Archive not found."}, status=404)
+
+    category, count = archive.category, archive.item_count
+    archive.delete()
+    log_activity(
+        "archive_deleted",
+        f"Admin permanently deleted an archive of {count} {category} record(s), freeing up storage.",
+    )
+    return JsonResponse({"message": "Archive permanently deleted."})
