@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, ClipboardList, Package, Activity as ActivityIcon, Mail, 
   LogIn, LogOut, Plus, Trash2, Edit, Check, AlertCircle, RefreshCw, X, TrendingUp, DollarSign, KeyRound,
-  Archive as ArchiveIcon, Download
+  Archive as ArchiveIcon, Download, RotateCcw
 } from 'lucide-react';
 import { API_BASE_URL } from '../lib/apiConfig';
 // Connected to the real Django + SQLite backend. All API calls below use the
@@ -499,6 +499,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       alert('Could not reach the backend server — check your connection and try again.');
+    }
+  };
+
+  const [restoringArchiveId, setRestoringArchiveId] = useState<number | null>(null);
+
+  const restoreArchive = async (archive: ArchiveRecord) => {
+    if (!confirm(`Unarchive ${archive.item_count} ${archive.category} record(s)? They will go back to the live ${archive.category === 'orders' ? 'Orders' : 'Activity Logs'} list exactly as they were before archiving, and this archive entry will be removed.`)) return;
+    setRestoringArchiveId(archive.id);
+    try {
+      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}/restore`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setArchiveMessage({
+          type: 'success',
+          text: `Unarchived ${data.restored_count} record(s) back to live tables.` + (data.skipped_count ? ` (${data.skipped_count} skipped — ID already in use.)` : '')
+        });
+        fetchAdminData();
+      } else {
+        alert(`Could not restore this archive (server responded with status ${res.status}).`);
+      }
+    } catch (err) {
+      alert('Could not reach the backend server — check your connection and try again.');
+    } finally {
+      setRestoringArchiveId(null);
     }
   };
 
@@ -1212,6 +1239,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                       >
                         <Download className="h-3.5 w-3.5" />
                         Download
+                      </button>
+                      <button
+                        onClick={() => restoreArchive(archive)}
+                        disabled={restoringArchiveId === archive.id}
+                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-emerald-950/40 disabled:opacity-50 text-slate-300 hover:text-emerald-400 rounded-lg text-[11px] font-semibold transition-all border border-white/10 hover:border-emerald-900/30 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {restoringArchiveId === archive.id ? 'Unarchiving…' : 'Unarchive'}
                       </button>
                       <button
                         onClick={() => deleteArchive(archive)}
