@@ -973,6 +973,95 @@ def archive_download(request, archive_id):
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+@require_admin
+def archive_restore(request, archive_id):
+    """Unarchive: recreate the archived records in their live tables exactly
+    as they were (same IDs, same created_at/timestamps), then delete the
+    archive snapshot since its contents are back in the live tables."""
+    try:
+        archive = Archive.objects.get(id=archive_id)
+    except Archive.DoesNotExist:
+        return JsonResponse({"error": "Archive not found."}, status=404)
+
+    try:
+        records = json.loads(archive.data)
+    except (json.JSONDecodeError, TypeError):
+        records = []
+
+    restored_ids = []
+
+    with transaction.atomic():
+        if archive.category == "orders":
+            for rec in records:
+                # Skip a record if its original ID was somehow reused since
+                # archiving (extremely unlikely, but don't silently clobber
+                # a newer, unrelated order).
+                if Order.objects.filter(id=rec["id"]).exists():
+                    continue
+
+                order = Order.objects.create(
+                    id=rec["id"],
+                    customer_name=rec["customer_name"],
+                    customer_email=rec["customer_email"],
+                    customer_address=rec["customer_address"],
+                    payment_method=rec["payment_method"],
+                    status=rec["status"],
+                    total_amount=rec["total_amount"],
+                    transaction_id=rec.get("transaction_id", ""),
+                    coupon_code=rec.get("coupon_code", ""),
+                    discount_amount=rec.get("discount_amount", 0),
+                    paid_at=rec.get("paid_at"),
+                )
+                # created_at is auto_now_add, so it's forced to "now" on
+                # create() above — restore the original timestamp with a
+                # direct update (bypasses the auto_now_add override).
+                Order.objects.filter(id=order.id).update(created_at=rec["created_at"])
+
+                for item in rec.get("items", []):
+                    # product may have been deleted/changed since archiving;
+                    # product_id_snapshot preserves what was actually
+                    # ordered regardless, matching how orders are created
+                    # elsewhere in the app.
+                    product_still_exists = Product.objects.filter(id=item["product_id"]).exists()
+                    OrderItem.objects.create(
+                        order=order,
+                        product_id=item["product_id"] if product_still_exists else None,
+                        product_id_snapshot=item["product_id"],
+                        product_name=item["product_name"],
+                        quantity=item["quantity"],
+                        price=item["price"],
+                    )
+                restored_ids.append(rec["id"])
+        else:  # "activities"
+            for rec in records:
+                if Activity.objects.filter(id=rec["id"]).exists():
+                    continue
+                activity = Activity.objects.create(
+                    id=rec["id"],
+                    type=rec["type"],
+                    description=rec["description"],
+                )
+                Activity.objects.filter(id=activity.id).update(created_at=rec["created_at"])
+                restored_ids.append(rec["id"])
+
+        skipped = len(records) - len(restored_ids)
+        archive.delete()
+
+    log_activity(
+        "archive_restored",
+        f"Admin unarchived {len(restored_ids)} {archive.category} record(s) back to live tables"
+        + (f" ({skipped} skipped — ID already in use)." if skipped else "."),
+    )
+    return JsonResponse({
+        "message": "Archive restored.",
+        "restored_count": len(restored_ids),
+        "skipped_count": skipped,
+        "restored_ids": restored_ids,
+    })
+
+
+@csrf_exempt
 @require_http_methods(["DELETE"])
 @require_admin
 def archive_delete(request, archive_id):
