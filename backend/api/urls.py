@@ -60,6 +60,7 @@ urlpatterns = [
     # Website Cleaning / Archive (additive, admin only)
     path("archive", views.archive_collection),
     path("archive/<int:archive_id>/download", views.archive_download),
+    path("archive/<int:archive_id>/restore", views.archive_restore),
     path("archive/<int:archive_id>", views.archive_delete),
 ]
 
