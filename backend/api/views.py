@@ -81,6 +81,8 @@ def _order_email_context(order, event_time):
         "order_id": order.id,
         "total_amount": order.total_amount,
         "payment_method": order.get_payment_method_display(),
+        "payment_method_code": order.payment_method,
+        "payment_details": PaymentDetails.load(),
         "customer_address": order.customer_address,
         "event_time": timezone.localtime(event_time),
     }
@@ -130,6 +132,24 @@ def notify_order_cancelled(order):
         sent, error = False, str(exc)
     log_activity("email_sent", json.dumps({
         "to": order.customer_email, "subject": subject, "type": "order_cancelled",
+        "sent": sent, "error": error,
+    }))
+
+
+def notify_order_duplicate_cancelled(order, original_order):
+    """Sent when a new order is auto-detected as a near-certain duplicate of
+    another very recent order from the same customer and is auto-cancelled.
+    Never raises: a notification failing must never turn a successfully
+    saved/cancelled order into a failed request for the customer."""
+    subject = f"Order #{order.id} cancelled — duplicate order detected — Glow State"
+    try:
+        context = _order_email_context(order, order.created_at)
+        context["kept_order_id"] = original_order.id
+        sent, error = send_branded_email(subject, "order_duplicate_cancelled", context, order.customer_email)
+    except Exception as exc:
+        sent, error = False, str(exc)
+    log_activity("email_sent", json.dumps({
+        "to": order.customer_email, "subject": subject, "type": "order_duplicate_cancelled",
         "sent": sent, "error": error,
     }))
 
@@ -341,6 +361,62 @@ REQUIRED_ORDER_FIELDS = [
     "payment_method", "total_amount", "items",
 ]
 
+# How far back to look for a possible accidental resubmission. Customers
+# who go back to the site to find their payment details and re-submit
+# usually do so within a couple of minutes, but a generous window is used
+# to be safe — this only ever matters when every other signal below also
+# matches, so a wide window doesn't make it trigger-happy on its own.
+DUPLICATE_ORDER_WINDOW_MINUTES = 30
+
+
+def _order_items_signature(order):
+    """An order-independent signature of what's in the cart: the set of
+    (product_id, quantity) pairs. Two orders sharing a signature contain
+    exactly the same products in exactly the same quantities."""
+    return frozenset(
+        (item.product_id_snapshot, item.quantity) for item in order.items.all()
+    )
+
+
+def _find_duplicate_order(order):
+    """Looks for a very recent, still-valid order from the same customer
+    that matches this one closely enough to be almost certainly an
+    accidental resubmission — not just "similar", but identical on every
+    signal that would distinguish two genuinely separate orders: customer
+    name/email, delivery address, payment method, order total, and the
+    exact set of items and quantities, all within a short time window.
+
+    Any mismatch on these is treated as a real, separate order and left
+    alone — e.g. two orders with the same products are NOT flagged unless
+    everything else (address, total, timing, etc.) also lines up.
+
+    Returns the earlier matching Order (the one to keep), or None.
+    """
+    window_start = order.created_at - timedelta(minutes=DUPLICATE_ORDER_WINDOW_MINUTES)
+    candidates = (
+        Order.objects.filter(
+            customer_email__iexact=order.customer_email,
+            created_at__gte=window_start,
+            created_at__lt=order.created_at,
+        )
+        .exclude(id=order.id)
+        .exclude(status="cancelled")
+        .order_by("created_at")
+        .prefetch_related("items")
+    )
+
+    order_signature = _order_items_signature(order)
+    for candidate in candidates:
+        if (
+            candidate.customer_name.strip().lower() == order.customer_name.strip().lower()
+            and candidate.customer_address.strip().lower() == order.customer_address.strip().lower()
+            and candidate.payment_method == order.payment_method
+            and candidate.total_amount == order.total_amount
+            and _order_items_signature(candidate) == order_signature
+        ):
+            return candidate
+    return None
+
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
@@ -392,13 +468,25 @@ def orders_collection(request):
                     product.stock = max(0, product.stock - int(item.get("quantity", 0)))
                     product.save(update_fields=["stock"])
 
-        log_activity(
-            "order_request",
-            f"New order request placed by {order.customer_name} via "
-            f"{order.get_payment_method_display()} (Total: ${float(order.total_amount):.2f} AUD).",
-        )
-        notify_admin_new_order(order)
-        notify_customer_order_confirmation(order)
+        duplicate_of = _find_duplicate_order(order)
+        if duplicate_of:
+            order.status = "cancelled"
+            order.cancel_reason = "duplicate_auto_cancelled"
+            order.save(update_fields=["status", "cancel_reason"])
+            log_activity(
+                "order_auto_cancelled",
+                f"Order #{order.id} auto-cancelled as a likely duplicate of order #{duplicate_of.id} "
+                f"placed by {order.customer_name}.",
+            )
+            notify_order_duplicate_cancelled(order, duplicate_of)
+        else:
+            log_activity(
+                "order_request",
+                f"New order request placed by {order.customer_name} via "
+                f"{order.get_payment_method_display()} (Total: ${float(order.total_amount):.2f} AUD).",
+            )
+            notify_admin_new_order(order)
+            notify_customer_order_confirmation(order)
         return JsonResponse(order.to_dict(), status=201)
 
     # GET — admin only
