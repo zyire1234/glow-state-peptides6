@@ -127,6 +127,13 @@ class Order(models.Model):
     coupon_code = models.CharField(max_length=50, blank=True, default="")
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    # --- Duplicate-order detection (additive) -----------------------------
+    # Set automatically when this order is auto-cancelled because it looks
+    # like an accidental resubmission of another very recent order. Blank
+    # for every normal order (including manually-cancelled ones), so it
+    # doesn't affect anything else.
+    cancel_reason = models.CharField(max_length=50, blank=True, default="")
+
     def to_dict(self, include_items=True):
         data = {
             "id": self.id,
@@ -139,6 +146,7 @@ class Order(models.Model):
             "transaction_id": self.transaction_id,
             "coupon_code": self.coupon_code,
             "discount_amount": float(self.discount_amount),
+            "cancel_reason": self.cancel_reason,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "created_at": self.created_at.isoformat(),
         }
