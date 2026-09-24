@@ -8,17 +8,14 @@
 <p style="margin:0 0 14px 0;">Hi {{ customer_name }},</p>
 
 <p style="margin:0 0 14px 0;">
-  Thank you for your order! We're now carefully preparing your order for dispatch.
-</p>
-
-<p style="margin:0 0 14px 0;">
-  Once your order has been shipped, you'll receive an Australia Post tracking email.
-  Please keep an eye on your inbox, including your spam or junk folder, just in case.
+  Thank you for your order! Please complete your payment and we can process your order to have it shipped via Express Post.
 </p>
 
 {% include "emails/_order_details.html" with date_label="Order Placed" total_label="Order Total" %}
 
+{% include "emails/_payment_instructions.html" %}
+
 <p style="margin:0 0 4px 0;">If you have any questions, we're always happy to help.</p>
-<p style="margin:0;">Thank you for your support. We hope you enjoy your purchase!</p>
+<p style="margin:0;">We appreciate your order and can't wait to get it on its way once payment has been received.</p>
 <p style="margin:14px 0 0 0;color:#ffffff;font-weight:600;">Glow State</p>
 {% endblock %}
