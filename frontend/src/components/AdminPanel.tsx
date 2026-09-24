@@ -75,6 +75,29 @@ interface AdminPanelProps {
   onClose: () => void;
 }
 
+// --- Shared style tokens ---------------------------------------------------
+// One consistent "panel/card" surface used across every tab (dashboard
+// detail panels, orders list, products table wrapper, activity log,
+// email outbox, archive panels, settings form), and one consistent
+// "inner tile" surface for smaller nested items (stat cards, list rows
+// inside a panel). Purely visual — pulling these into one place just
+// keeps every tab's cards/tables/shadows in sync with each other.
+const PANEL = 'bg-slate-900/60 border border-slate-800/80 rounded-2xl shadow-lg';
+const TILE = 'bg-white/5 border border-white/10 rounded-xl';
+
+// Consistent header shape for every tab: a title, an optional one-line
+// description, and an optional right-aligned action/count — so moving
+// between tabs feels like one system instead of different screens.
+const TabHeader: React.FC<{ title: string; description?: string; action?: React.ReactNode }> = ({ title, description, action }) => (
+  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+    <div>
+      <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">{title}</h2>
+      {description && <p className="text-slate-400 text-xs mt-1 max-w-2xl">{description}</p>}
+    </div>
+    {action && <div className="shrink-0">{action}</div>}
+  </div>
+);
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [username, setUsername] = useState<string>('');
@@ -83,6 +106,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   const [token, setToken] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'activities' | 'emails' | 'archive' | 'settings'>('dashboard');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'invoice_sent' | 'paid' | 'shipped' | 'cancelled'>('all');
 
   // Admin states
   const [products, setProducts] = useState<Product[]>([]);
@@ -568,6 +592,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     }
   };
 
+  const filteredOrders = orderStatusFilter === 'all'
+    ? orders
+    : orders.filter(o => o.status === orderStatusFilter);
+
   if (!isAuthenticated) {
     return (
       <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center p-4 z-50 animate-fade-in">
@@ -668,85 +696,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
 
       {/* Main Container */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Tabs */}
-        <aside className="w-64 bg-white/5 border-r border-white/10 p-4 space-y-1 hidden md:block">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'dashboard'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <TrendingUp className="h-4 w-4" />
-            <span>Dashboard Overview</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'orders'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <ClipboardList className="h-4 w-4" />
-            <span>Order Requests ({orders.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'products'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <Package className="h-4 w-4" />
-            <span>Product Catalog</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('activities')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'activities'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <ActivityIcon className="h-4 w-4" />
-            <span>Activity Logs</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('emails')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'emails'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <Mail className="h-4 w-4" />
-            <span>Email Outbox Simulator</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('archive')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'archive'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <ArchiveIcon className="h-4 w-4" />
-            <span>Website Cleaning / Archive</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === 'settings'
-                ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-            }`}
-          >
-            <KeyRound className="h-4 w-4" />
-            <span>Account Security</span>
-          </button>
+        {/* Sidebar Tabs — grouped into sections so related tools sit together */}
+        <aside className="w-64 bg-white/5 border-r border-white/10 p-4 space-y-5 hidden md:block">
+          {[
+            {
+              label: 'Overview',
+              items: [
+                { id: 'dashboard' as const, label: 'Dashboard Overview', icon: <TrendingUp className="h-4 w-4" /> },
+              ],
+            },
+            {
+              label: 'Operations',
+              items: [
+                { id: 'orders' as const, label: `Order Requests (${orders.length})`, icon: <ClipboardList className="h-4 w-4" /> },
+                { id: 'products' as const, label: 'Product Catalog', icon: <Package className="h-4 w-4" /> },
+              ],
+            },
+            {
+              label: 'Records',
+              items: [
+                { id: 'activities' as const, label: 'Activity Logs', icon: <ActivityIcon className="h-4 w-4" /> },
+                { id: 'emails' as const, label: 'Email Outbox Simulator', icon: <Mail className="h-4 w-4" /> },
+              ],
+            },
+            {
+              label: 'System',
+              items: [
+                { id: 'archive' as const, label: 'Website Cleaning / Archive', icon: <ArchiveIcon className="h-4 w-4" /> },
+                { id: 'settings' as const, label: 'Account Security', icon: <KeyRound className="h-4 w-4" /> },
+              ],
+            },
+          ].map(section => (
+            <div key={section.label} className="space-y-1">
+              <p className="px-4 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{section.label}</p>
+              {section.items.map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                    activeTab === item.id
+                      ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              ))}
+            </div>
+          ))}
         </aside>
 
         {/* Content Panel */}
@@ -778,10 +776,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 1: Dashboard Overview */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Metrics & Performance</h2>
-              
+              <TabHeader title="Metrics & Performance" description="A live snapshot of revenue, order volume, and inventory." />
+
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-xl relative overflow-hidden backdrop-blur-sm">
+                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
                   <div className="absolute top-0 right-0 w-16 h-16 bg-purple-600/5 blur-xl pointer-events-none" />
                   <div className="flex items-center justify-between mb-3 relative z-10">
                     <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Revenue (Confirmed)</span>
@@ -793,7 +791,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   <p className="text-[10px] text-slate-500 mt-1 relative z-10">Paid or Shipped requests</p>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-xl relative overflow-hidden backdrop-blur-sm">
+                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
                   <div className="absolute top-0 right-0 w-16 h-16 bg-blue-600/5 blur-xl pointer-events-none" />
                   <div className="flex items-center justify-between mb-3 relative z-10">
                     <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Orders</span>
@@ -805,7 +803,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   <p className="text-[10px] text-slate-500 mt-1 relative z-10">Total customer queries submitted</p>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-xl relative overflow-hidden backdrop-blur-sm">
+                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
                   <div className="absolute top-0 right-0 w-16 h-16 bg-amber-600/5 blur-xl pointer-events-none" />
                   <div className="flex items-center justify-between mb-3 relative z-10">
                     <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Needs Invoice</span>
@@ -817,7 +815,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   <p className="text-[10px] text-slate-500 mt-1 relative z-10">Awaiting bank proof/PayID issue</p>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-xl p-5 shadow-xl relative overflow-hidden backdrop-blur-sm">
+                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
                   <div className="absolute top-0 right-0 w-16 h-16 bg-pink-600/5 blur-xl pointer-events-none" />
                   <div className="flex items-center justify-between mb-3 relative z-10">
                     <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Products Registered</span>
@@ -833,7 +831,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
               {/* Two Column details */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Recent activity */}
-                <div className="bg-[#08081a]/40 border border-white/10 rounded-2xl p-5 shadow-xl flex flex-col h-[400px]">
+                <div className={`${PANEL} p-5 flex flex-col h-[400px]`}>
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
                     <h4 className="font-display font-semibold text-white uppercase tracking-wider text-sm flex items-center gap-2">
                       <ActivityIcon className="h-4 w-4 text-purple-400" />
@@ -858,7 +856,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </div>
 
                 {/* Quick Orders pending */}
-                <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col h-[400px]">
+                <div className={`${PANEL} p-5 flex flex-col h-[400px]`}>
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
                     <h4 className="font-display font-semibold text-white uppercase tracking-wider text-sm flex items-center gap-2">
                       <ClipboardList className="h-4 w-4 text-purple-400" />
@@ -897,41 +895,61 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 2: Orders List */}
           {activeTab === 'orders' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Purchase & Invoice Requests</h2>
-                <span className="text-slate-400 text-xs font-mono">{orders.length} order requests logged</span>
+              <TabHeader
+                title="Purchase & Invoice Requests"
+                description="Review order requests and update their status."
+                action={<span className="text-slate-400 text-xs font-mono">{filteredOrders.length} of {orders.length} shown</span>}
+              />
+
+              {/* Status filter chips */}
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {(['all', 'pending', 'invoice_sent', 'paid', 'shipped', 'cancelled'] as const).map(status => (
+                  <button
+                    key={status}
+                    onClick={() => setOrderStatusFilter(status)}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border capitalize cursor-pointer transition-all ${
+                      orderStatusFilter === status
+                        ? 'bg-purple-500/20 border-purple-500 text-purple-300'
+                        : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {status === 'all' ? 'All' : status.replace('_', ' ')}
+                    {status !== 'all' && ` (${orders.filter(o => o.status === status).length})`}
+                  </button>
+                ))}
               </div>
 
               <div className="space-y-4">
-                {orders.map(order => (
-                  <div key={order.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-                    {/* Header */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
+                {filteredOrders.map(order => (
+                  <div key={order.id} className={`${PANEL} p-5 space-y-4`}>
+                    {/* Header — status + total anchored top-right, where the eye lands first when scanning many orders */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-800 pb-3 gap-3">
                       <div>
-                        <div className="flex items-center gap-2.5">
-                          <h3 className="font-display font-bold text-lg text-white">Order ID: #{order.id}</h3>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${getStatusBadgeClass(order.status)}`}>
-                            {order.status.replace('_', ' ')}
-                          </span>
-                        </div>
+                        <h3 className="font-display font-bold text-lg text-white">Order ID: #{order.id}</h3>
                         <p className="text-slate-500 text-[11px] font-mono mt-0.5">
                           Submitted: {new Date(order.created_at).toLocaleString('en-AU', { timeZone: 'Australia/Brisbane' })} (Brisbane time)
                         </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-slate-400 text-xs uppercase tracking-wider">Update Status:</span>
+                          <select
+                            value={order.status}
+                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                            className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                          >
+                            <option value="pending">Pending Request</option>
+                            <option value="invoice_sent">Invoice Issued</option>
+                            <option value="paid">Mark as Paid</option>
+                            <option value="shipped">Mark as Dispatched</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-400 text-xs uppercase tracking-wider">Update Status:</span>
-                        <select
-                          value={order.status}
-                          onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                          className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
-                        >
-                          <option value="pending">Pending Request</option>
-                          <option value="invoice_sent">Invoice Issued</option>
-                          <option value="paid">Mark as Paid</option>
-                          <option value="shipped">Mark as Dispatched</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
+                      <div className="text-left sm:text-right">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block ${getStatusBadgeClass(order.status)}`}>
+                          {order.status.replace('_', ' ')}
+                        </span>
+                        <p className="font-mono font-bold text-white text-lg mt-1.5">${Number(order.total_amount).toFixed(2)} AUD</p>
                       </div>
                     </div>
 
@@ -964,8 +982,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   </div>
                 ))}
 
-                {orders.length === 0 && (
-                  <p className="text-slate-500 text-xs text-center py-20">No orders logged yet.</p>
+                {filteredOrders.length === 0 && (
+                  <p className="text-slate-500 text-xs text-center py-20">
+                    {orders.length === 0 ? 'No orders logged yet.' : 'No orders match this filter.'}
+                  </p>
                 )}
               </div>
             </div>
@@ -974,18 +994,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 3: Products Catalog */}
           {activeTab === 'products' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider font-semibold">Active Laboratories Inventory</h2>
-                <button
-                  onClick={openAddProduct}
-                  className="flex items-center gap-2 py-2 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:opacity-95 transition-all"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Register Peptide</span>
-                </button>
-              </div>
+              <TabHeader
+                title="Active Laboratories Inventory"
+                description="Manage the live product catalog shown on the storefront."
+                action={
+                  <button
+                    onClick={openAddProduct}
+                    className="flex items-center gap-2 py-2 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:opacity-95 transition-all"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Register Peptide</span>
+                  </button>
+                }
+              />
 
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+              <div className={`${PANEL} overflow-hidden`}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
@@ -1051,9 +1074,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 4: Activity Logs */}
           {activeTab === 'activities' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Audit logs & Events logs</h2>
-              
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg divide-y divide-slate-800 max-h-[600px] overflow-y-auto">
+              <TabHeader title="Audit Logs & Events" description="A chronological record of admin actions and system notifications." />
+
+              <div className={`${PANEL} p-5 divide-y divide-slate-800 max-h-[600px] overflow-y-auto`}>
                 {activities.map(act => (
                   <div key={act.id} className="py-3.5 first:pt-0 last:pb-0 flex justify-between items-start text-xs gap-4">
                     <div className="space-y-1">
@@ -1077,14 +1100,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 5: Email Simulator */}
           {activeTab === 'emails' && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Automated Email Log</h2>
-                <p className="text-slate-400 text-xs mt-1">Review exactly what automated order emails were sent (or failed) to `glowstatesupport@gmail.com` and customer mailboxes.</p>
-              </div>
+              <TabHeader
+                title="Automated Email Log"
+                description="Review exactly what automated order emails were sent (or failed) to glowstatesupport@gmail.com and customer mailboxes."
+              />
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* List */}
-                <div className="md:col-span-1 bg-slate-900 border border-slate-800 rounded-2xl p-4 h-[500px] overflow-y-auto space-y-2.5">
+                <div className={`${PANEL} md:col-span-1 p-4 h-[500px] overflow-y-auto space-y-2.5`}>
                   <h3 className="text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">Dispatched Outbox</h3>
                   {emails.map(mail => (
                     <button
@@ -1115,7 +1138,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </div>
 
                 {/* Display */}
-                <div className="md:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6 h-[500px] flex flex-col">
+                <div className={`${PANEL} md:col-span-2 p-6 h-[500px] flex flex-col`}>
                   {selectedEmail ? (
                     <div className="flex flex-col h-full">
                       <div className="border-b border-slate-800 pb-3 mb-4 space-y-1">
@@ -1156,15 +1179,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab 6: Website Cleaning / Archive */}
           {activeTab === 'archive' && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Website Cleaning / Archive</h2>
-                <p className="text-slate-400 text-xs mt-1">
-                  Move old data out of the live database into a downloadable snapshot to free up storage.
-                </p>
-              </div>
+              <TabHeader
+                title="Website Cleaning / Archive"
+                description="Move old data out of the live database into a downloadable snapshot to free up storage."
+              />
 
               {/* Create archive form */}
-              <form onSubmit={createArchive} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <form onSubmit={createArchive} className={`${PANEL} p-6 space-y-4`}>
                 {archiveMessage && (
                   <div className={`rounded-xl p-3 flex items-center gap-2.5 text-xs ${
                     archiveMessage.type === 'success'
@@ -1217,7 +1238,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
               </form>
 
               {/* Existing archives list */}
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg divide-y divide-slate-800">
+              <div className={`${PANEL} p-5 divide-y divide-slate-800`}>
                 <h3 className="text-slate-400 text-[11px] font-bold uppercase tracking-wider pb-3">Stored Archives</h3>
                 {archives.map(archive => (
                   <div key={archive.id} className="py-3.5 first:pt-0 last:pb-0 flex flex-wrap justify-between items-center gap-3 text-xs">
@@ -1268,14 +1289,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           {/* Tab: Account Security / Change Password */}
           {activeTab === 'settings' && (
             <div className="space-y-6 max-w-lg">
-              <div>
-                <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">Account Security</h2>
-                <p className="text-slate-400 text-xs mt-1">
-                  Change your admin password. This site has no backend server, so this password is only ever stored (hashed) in this browser's local storage — it is never shown on any public page.
-                </p>
-              </div>
+              <TabHeader
+                title="Account Security"
+                description="Change your admin password. This site has no backend server, so this password is only ever stored (hashed) in this browser's local storage — it is never shown on any public page."
+              />
 
-              <form onSubmit={handleChangePassword} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
+              <form onSubmit={handleChangePassword} className={`${PANEL} p-6 space-y-4`}>
                 {pwMessage && (
                   <div className={`rounded-xl p-3 flex items-center gap-2.5 text-xs ${
                     pwMessage.type === 'success'
