@@ -1,0 +1,24 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Duplicate Order Cancelled — Glow State{% endblock %}
+
+{% block heading %}One of your orders has been cancelled{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 14px 0;">Hi {{ customer_name }},</p>
+
+<p style="margin:0 0 14px 0;">
+  We noticed that the same order was submitted more than once. To prevent duplicate orders,
+  the order below has been cancelled and only order #00{{ kept_order_id }} will be processed.
+</p>
+
+<p style="margin:0 0 14px 0;">
+  If you placed this order intentionally, or have any questions or complaints, please contact us
+  and we will be happy to assist.
+</p>
+
+{% include "emails/_order_details.html" with date_label="Order Placed" total_label="Order Total" %}
+
+<p style="margin:0;">Thank you for your understanding.</p>
+<p style="margin:14px 0 0 0;color:#ffffff;font-weight:600;">Glow State</p>
+{% endblock %}
