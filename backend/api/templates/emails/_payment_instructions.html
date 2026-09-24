@@ -1,0 +1,62 @@
+{% if payment_method_code == "payid" %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px 0;border-collapse:collapse;background-color:#050510;border-radius:10px;border:1px solid rgba(168,85,247,0.25);">
+  <tr>
+    <td style="padding:16px 18px;">
+      <div style="color:#c084fc;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Payment Method</div>
+      <div style="color:#ffffff;font-size:14px;font-weight:700;margin-bottom:10px;">PayID Payment</div>
+      <div style="color:#cbd5e1;font-size:12.5px;margin-bottom:12px;">Please complete your payment using the details below.</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a25;border-radius:8px;">
+        <tr>
+          <td style="padding:12px 14px;">
+            <div style="color:#94a3b8;font-size:11px;margin-bottom:4px;">Complete your payment to:</div>
+            <div style="color:#c084fc;font-size:15px;font-weight:700;font-family:'Courier New',monospace;">PayID: {{ payment_details.payid_number }}</div>
+            <div style="color:#e2e8f0;font-size:12.5px;font-weight:700;margin-top:4px;font-family:'Courier New',monospace;">Ref: #00{{ order_id }}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+{% elif payment_method_code == "bank_transfer" %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 18px 0;border-collapse:collapse;background-color:#050510;border-radius:10px;border:1px solid rgba(168,85,247,0.25);">
+  <tr>
+    <td style="padding:16px 18px;">
+      <div style="color:#c084fc;font-size:10px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;">Payment Method</div>
+      <div style="color:#ffffff;font-size:14px;font-weight:700;margin-bottom:10px;">Bank Transfer</div>
+      <div style="color:#cbd5e1;font-size:12.5px;margin-bottom:12px;">Please complete your payment using the details below.</div>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a25;border-radius:8px;">
+        <tr>
+          <td style="padding:12px 14px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:2px 0;color:#94a3b8;font-size:11.5px;">Account Name:</td>
+                <td align="right" style="padding:2px 0;color:#ffffff;font-size:12px;font-weight:700;">{{ payment_details.account_name }}</td>
+              </tr>
+              <tr>
+                <td style="padding:2px 0;color:#94a3b8;font-size:11.5px;">BSB:</td>
+                <td align="right" style="padding:2px 0;color:#ffffff;font-size:12px;font-weight:700;font-family:'Courier New',monospace;">{{ payment_details.bsb }}</td>
+              </tr>
+              <tr>
+                <td style="padding:2px 0;color:#94a3b8;font-size:11.5px;">Account Number:</td>
+                <td align="right" style="padding:2px 0;color:#ffffff;font-size:12px;font-weight:700;font-family:'Courier New',monospace;">{{ payment_details.account_number }}</td>
+              </tr>
+              <tr>
+                <td style="padding:2px 0;color:#94a3b8;font-size:11.5px;">Reference:</td>
+                <td align="right" style="padding:2px 0;color:#ffffff;font-size:12px;font-weight:700;font-family:'Courier New',monospace;">#00{{ order_id }}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;background-color:rgba(147,51,234,0.12);border-radius:8px;">
+        <tr>
+          <td style="padding:10px 12px;color:#e9d5ff;font-size:11.5px;line-height:1.6;">
+            <strong style="color:#c084fc;">Please note!</strong> When making the bank transfer it might say the name does not match the account. This is normal. Please continue and confirm the transfer.
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+{% endif %}
