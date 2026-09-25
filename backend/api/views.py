@@ -665,25 +665,28 @@ def orders_collection(request):
                     product.stock = max(0, product.stock - int(item.get("quantity", 0)))
                     product.save(update_fields=["stock"])
 
+        # A possible duplicate is flagged for you to review manually (see
+        # the Activity Log) rather than auto-cancelled — it's often the
+        # FIRST of the two orders that turns out to be the accidental one,
+        # not the second, so guessing which to cancel automatically caused
+        # more confusion than it prevented. Cancel whichever one wasn't
+        # paid for yourself, once you've checked the payment reference.
         duplicate_of = _find_duplicate_order(order)
         if duplicate_of:
-            order.status = "cancelled"
-            order.cancel_reason = "duplicate_auto_cancelled"
-            order.save(update_fields=["status", "cancel_reason"])
             log_activity(
-                "order_auto_cancelled",
-                f"Order #{order.id} auto-cancelled as a likely duplicate of order #{duplicate_of.id} "
-                f"placed by {order.customer_name}.",
+                "order_possible_duplicate",
+                f"Heads up: Order #{order.id} looks like a possible duplicate of order #{duplicate_of.id} "
+                f"placed by {order.customer_name} (same items, address, payment method and total, within "
+                f"{DUPLICATE_ORDER_WINDOW_MINUTES} minutes). Not auto-cancelled — please check which one "
+                f"was actually paid for and cancel the other manually.",
             )
-            notify_order_duplicate_cancelled(order, duplicate_of)
-        else:
-            log_activity(
-                "order_request",
-                f"New order request placed by {order.customer_name} via "
-                f"{order.get_payment_method_display()} (Total: ${float(order.total_amount):.2f} AUD).",
-            )
-            notify_admin_new_order(order)
-            notify_customer_order_confirmation(order)
+        log_activity(
+            "order_request",
+            f"New order request placed by {order.customer_name} via "
+            f"{order.get_payment_method_display()} (Total: ${float(order.total_amount):.2f} AUD).",
+        )
+        notify_admin_new_order(order)
+        notify_customer_order_confirmation(order)
         return JsonResponse(order.to_dict(), status=201)
 
     # GET — admin only
