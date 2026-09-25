@@ -70,30 +70,135 @@ class Product(models.Model):
 
 
 class Coupon(models.Model):
-    """Discount codes. `expires_at` is set once, at creation time, and never
-    moves — that's what makes a code like SALE30 "valid for 1 week only":
-    is_valid() compares against the real clock, so the code stops working on
-    its own the moment that timestamp passes, no cron job or admin action
-    required."""
+    """Discount codes, fully admin-manageable from the Admin Panel.
+
+    The discount is always applied ONCE to the order's overall total (or, if
+    `applies_to_all` is False, to the portion of the total made up of the
+    selected `products`) — never recalculated per line item.
+
+    `is_valid()` is the single source of truth for whether a code currently
+    works. It self-deactivates (persists `is_active=False`) the moment it is
+    checked past its window or usage cap, so a code like "stops working after
+    50 uses" or "stops working after its end date" needs no cron job —
+    it happens lazily on the next validation/checkout attempt.
+    """
 
     code = models.CharField(max_length=50, unique=True)
+    name = models.CharField(max_length=150, blank=True, default="")
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2)
+
+    # Manual on/off switch — an admin can flip this to False at any time,
+    # even if the code hasn't expired or reached its usage limit yet.
     is_active = models.BooleanField(default=True)
+
+    # Scheduling window. starts_at defaults to "right now" so a coupon
+    # created without an explicit start time is usable immediately.
+    starts_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField()
+
+    # Usage cap. Null/blank = unlimited uses. used_count is incremented
+    # exactly once per order that successfully applies this coupon.
+    max_uses = models.PositiveIntegerField(null=True, blank=True)
+    used_count = models.PositiveIntegerField(default=0)
+
+    # Product scope: applies_to_all=True (default) discounts the whole
+    # order; otherwise only the products in `products` are eligible, and the
+    # discount is computed off the subtotal of just those items in the cart.
+    applies_to_all = models.BooleanField(default=True)
+    products = models.ManyToManyField(Product, blank=True, related_name="coupons")
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.code} ({self.discount_percent}% off)"
 
     def is_valid(self):
-        return self.is_active and timezone.now() < self.expires_at
+        """Active + within its date window + under its usage cap. Persists
+        an automatic deactivation (is_active=False) the moment either the
+        expiry or the usage cap is crossed, so the code visibly shows as
+        stopped in the admin dashboard without any manual step."""
+        if not self.is_active:
+            return False
+        now = timezone.now()
+        expired = now >= self.expires_at
+        not_started = self.starts_at and now < self.starts_at
+        used_up = self.max_uses is not None and self.used_count >= self.max_uses
+        if expired or used_up:
+            self.is_active = False
+            self.save(update_fields=["is_active"])
+            return False
+        if not_started:
+            return False
+        return True
 
-    def to_dict(self):
-        return {
+    @property
+    def remaining_uses(self):
+        if self.max_uses is None:
+            return None
+        return max(0, self.max_uses - self.used_count)
+
+    @property
+    def status(self):
+        now = timezone.now()
+        if not self.is_active:
+            if self.max_uses is not None and self.used_count >= self.max_uses:
+                return "used_up"
+            if now >= self.expires_at:
+                return "expired"
+            return "stopped"
+        if now >= self.expires_at:
+            return "expired"
+        if self.starts_at and now < self.starts_at:
+            return "scheduled"
+        return "active"
+
+    def eligible_subtotal(self, items):
+        """Given a list of {product_id, quantity, price} dicts (the cart /
+        order items), returns the subtotal of just the items this coupon
+        applies to. When applies_to_all is True that's every item; otherwise
+        only items whose product_id is in this coupon's selected products."""
+        product_ids = None
+        if not self.applies_to_all:
+            product_ids = set(self.products.values_list("id", flat=True))
+        total = 0
+        for item in items:
+            pid = item.get("product_id")
+            if product_ids is not None and pid not in product_ids:
+                continue
+            qty = item.get("quantity") or 0
+            price = item.get("price") or 0
+            total += float(qty) * float(price)
+        return total
+
+    def calculate_discount(self, items):
+        """The single number the discount ever produces: applied ONCE to the
+        eligible subtotal (either the whole order or just the selected
+        products' portion of it) — never recomputed per product line."""
+        subtotal = self.eligible_subtotal(items)
+        return round(subtotal * float(self.discount_percent) / 100, 2)
+
+    def to_dict(self, detailed=False):
+        data = {
             "code": self.code,
             "discount_percent": float(self.discount_percent),
             "expires_at": self.expires_at.isoformat(),
+            "applies_to_all": self.applies_to_all,
         }
+        if not self.applies_to_all:
+            data["product_ids"] = list(self.products.values_list("id", flat=True))
+        if detailed:
+            data.update({
+                "id": self.id,
+                "name": self.name,
+                "is_active": self.is_active,
+                "starts_at": self.starts_at.isoformat() if self.starts_at else None,
+                "max_uses": self.max_uses,
+                "used_count": self.used_count,
+                "remaining_uses": self.remaining_uses,
+                "status": self.status,
+                "created_at": self.created_at.isoformat(),
+            })
+        return data
 
 
 class Order(models.Model):
