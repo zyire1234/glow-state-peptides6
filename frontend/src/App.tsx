@@ -64,7 +64,7 @@ export default function App() {
 
   // Coupon code state
   const [couponInput, setCouponInput] = useState('');
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_percent: number } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_percent: number; applies_to_all: boolean; product_ids?: number[] } | null>(null);
   const [couponError, setCouponError] = useState('');
   const [couponChecking, setCouponChecking] = useState(false);
   const [shippingDetails, setShippingDetails] = useState({
@@ -265,10 +265,22 @@ export default function App() {
 
   // Coupon code — validated against the backend on "Apply" (and re-checked
   // there again on order submit), so an expired/invalid code never reduces
-  // the total the customer actually pays.
+  // the total the customer actually pays. The discount is always applied
+  // ONCE to the eligible subtotal (the whole cart, or — if the admin scoped
+  // the code to specific products — just the portion of the cart made up of
+  // those products), never recalculated separately per product line.
   const getDiscountAmount = () => {
     if (!appliedCoupon || cart.length === 0) return 0;
-    return getCartTotal() * (appliedCoupon.discount_percent / 100);
+    const eligibleSubtotal = appliedCoupon.applies_to_all
+      ? getCartTotal()
+      : cart.reduce((sum, item) => {
+          if (!appliedCoupon.product_ids?.includes(item.product.id)) return sum;
+          const price = item.product.is_discounted && item.product.discount_price
+            ? item.product.discount_price
+            : item.product.price;
+          return sum + price * item.quantity;
+        }, 0);
+    return eligibleSubtotal * (appliedCoupon.discount_percent / 100);
   };
 
   const getDiscountedSubtotal = () => {
@@ -288,8 +300,19 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        setAppliedCoupon({ code: data.code, discount_percent: data.discount_percent });
-        setCouponError('');
+        const coupon = {
+          code: data.code,
+          discount_percent: data.discount_percent,
+          applies_to_all: data.applies_to_all !== false,
+          product_ids: data.product_ids as number[] | undefined,
+        };
+        if (!coupon.applies_to_all && !cart.some(item => coupon.product_ids?.includes(item.product.id))) {
+          setAppliedCoupon(null);
+          setCouponError("That code doesn't apply to any item currently in your cart.");
+        } else {
+          setAppliedCoupon(coupon);
+          setCouponError('');
+        }
       } else {
         setAppliedCoupon(null);
         setCouponError(data.error || 'Invalid coupon code.');
