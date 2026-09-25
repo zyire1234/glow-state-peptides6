@@ -327,7 +327,8 @@ def product_detail(request, product_id):
 
 def _lookup_valid_coupon(raw_code):
     """Returns (coupon, error_message). error_message is None when the code
-    is real and currently valid (active + not past its expires_at)."""
+    is real and currently valid (active, within its date window, and under
+    its usage cap)."""
     code = (raw_code or "").strip().upper()
     if not code:
         return None, "Coupon code is required."
@@ -335,6 +336,13 @@ def _lookup_valid_coupon(raw_code):
     if not coupon:
         return None, "That coupon code doesn't exist."
     if not coupon.is_valid():
+        status = coupon.status
+        if status == "used_up":
+            return None, "That coupon code has reached its usage limit."
+        if status == "scheduled":
+            return None, "That coupon code isn't active yet."
+        if status == "stopped":
+            return None, "That coupon code is no longer active."
         return None, "That coupon code has expired."
     return coupon, None
 
@@ -342,14 +350,183 @@ def _lookup_valid_coupon(raw_code):
 @csrf_exempt
 @require_http_methods(["POST"])
 def coupon_validate(request):
-    """POST /api/coupons/validate  { "code": "SALE30" }
-    Used by the storefront to check a code (and get its discount %) before
-    the customer submits their order."""
+    """POST /api/coupons/validate  { "code": "SALE30", "items": [...] }
+    Used by the storefront to check a code (and get its discount %/scope)
+    before the customer submits their order. `items` is optional — when
+    given as [{product_id, quantity, price}, ...] the response also includes
+    the discount amount computed ONCE off the eligible subtotal (the whole
+    cart, or just the coupon's selected products), never per product."""
     data = _body(request)
     coupon, error = _lookup_valid_coupon(data.get("code"))
     if error:
         return JsonResponse({"error": error}, status=404)
-    return JsonResponse(coupon.to_dict())
+    result = coupon.to_dict()
+    items = data.get("items")
+    if isinstance(items, list):
+        result["discount_amount"] = coupon.calculate_discount(items)
+    return JsonResponse(result)
+
+
+def _coupon_or_404(coupon_id):
+    return Coupon.objects.filter(id=coupon_id).first()
+
+
+def _parse_coupon_payload(data, coupon=None):
+    """Shared parsing/validation for create + update. Returns (fields, error)."""
+    fields = {}
+
+    if "code" in data:
+        code = (data.get("code") or "").strip().upper()
+        if not code:
+            return None, "Coupon code is required."
+        clash = Coupon.objects.filter(code=code)
+        if coupon:
+            clash = clash.exclude(id=coupon.id)
+        if clash.exists():
+            return None, "A coupon with that code already exists."
+        fields["code"] = code
+    elif coupon is None:
+        return None, "Coupon code is required."
+
+    if "name" in data:
+        fields["name"] = (data.get("name") or "").strip()
+
+    if "discount_percent" in data:
+        try:
+            pct = float(data.get("discount_percent"))
+        except (TypeError, ValueError):
+            return None, "Discount percent must be a number."
+        if pct <= 0 or pct > 100:
+            return None, "Discount percent must be greater than 0 and at most 100."
+        fields["discount_percent"] = pct
+    elif coupon is None:
+        return None, "Discount percent is required."
+
+    if "starts_at" in data and data.get("starts_at"):
+        parsed = _parse_datetime(data["starts_at"])
+        if not parsed:
+            return None, "Invalid start date."
+        fields["starts_at"] = parsed
+
+    if "expires_at" in data:
+        parsed = _parse_datetime(data.get("expires_at"))
+        if not parsed:
+            return None, "A valid end date/time is required."
+        fields["expires_at"] = parsed
+    elif coupon is None:
+        return None, "An end date/time is required."
+
+    if "max_uses" in data:
+        raw = data.get("max_uses")
+        if raw in (None, ""):
+            fields["max_uses"] = None
+        else:
+            try:
+                max_uses = int(raw)
+            except (TypeError, ValueError):
+                return None, "Max uses must be a whole number."
+            if max_uses < 1:
+                return None, "Max uses must be at least 1."
+            fields["max_uses"] = max_uses
+
+    applies_to_all = data.get("applies_to_all")
+    product_ids = data.get("product_ids")
+    if applies_to_all is not None:
+        fields["applies_to_all"] = bool(applies_to_all)
+    if product_ids is not None:
+        if not isinstance(product_ids, list):
+            return None, "product_ids must be a list."
+        fields["_product_ids"] = [int(pid) for pid in product_ids]
+        if not fields.get("applies_to_all", coupon.applies_to_all if coupon else False):
+            fields.setdefault("applies_to_all", False)
+
+    if "is_active" in data:
+        fields["is_active"] = bool(data.get("is_active"))
+
+    return fields, None
+
+
+def _parse_datetime(value):
+    if not value:
+        return None
+    parsed = None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+@csrf_exempt
+@require_admin
+@require_http_methods(["GET", "POST"])
+def coupons_collection(request):
+    """GET /api/coupons — list every coupon (admin dashboard table), newest
+    first, each with its usage stats and current status.
+    POST /api/coupons — create a new discount code with any name/code,
+    percentage, product scope, date window, and usage cap the admin sets."""
+    if request.method == "GET":
+        coupons = Coupon.objects.all().order_by("-created_at")
+        return JsonResponse([c.to_dict(detailed=True) for c in coupons], safe=False)
+
+    data = _body(request)
+    fields, error = _parse_coupon_payload(data)
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    product_ids = fields.pop("_product_ids", None)
+    fields.setdefault("applies_to_all", True)
+    coupon = Coupon.objects.create(**fields)
+    if product_ids is not None:
+        coupon.products.set(Product.objects.filter(id__in=product_ids))
+    log_activity("coupon_created", f"Admin created discount code: {coupon.code} ({coupon.discount_percent}% off)")
+    return JsonResponse(coupon.to_dict(detailed=True), status=201)
+
+
+@csrf_exempt
+@require_admin
+@require_http_methods(["GET", "PUT", "PATCH", "DELETE"])
+def coupon_detail(request, coupon_id):
+    """GET/PUT/PATCH/DELETE /api/coupons/<id>
+    PATCH is how the admin manually stops a code early (is_active: false),
+    reactivates it, or edits its percentage / scope / dates / usage cap."""
+    coupon = _coupon_or_404(coupon_id)
+    if not coupon:
+        return JsonResponse({"error": "Coupon not found."}, status=404)
+
+    if request.method == "GET":
+        return JsonResponse(coupon.to_dict(detailed=True))
+
+    if request.method == "DELETE":
+        code = coupon.code
+        coupon.delete()
+        log_activity("coupon_deleted", f"Admin deleted discount code: {code}")
+        return JsonResponse({"message": "Coupon successfully deleted."})
+
+    # PUT / PATCH
+    data = _body(request)
+    fields, error = _parse_coupon_payload(data, coupon=coupon)
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    product_ids = fields.pop("_product_ids", None)
+    was_active = coupon.is_active
+    for key, value in fields.items():
+        setattr(coupon, key, value)
+    coupon.save()
+    if product_ids is not None:
+        coupon.products.set(Product.objects.filter(id__in=product_ids))
+
+    if "is_active" in fields and was_active and not fields["is_active"]:
+        log_activity("coupon_deactivated", f"Admin manually stopped discount code: {coupon.code}")
+    elif "is_active" in fields and not was_active and fields["is_active"]:
+        log_activity("coupon_activated", f"Admin reactivated discount code: {coupon.code}")
+    else:
+        log_activity("coupon_updated", f"Admin updated discount code: {coupon.code}")
+
+    return JsonResponse(coupon.to_dict(detailed=True))
 
 
 # ---------------------------------------------------------------------------
@@ -432,17 +609,37 @@ def orders_collection(request):
             )
 
         # A coupon code is optional, but if one was applied on the frontend
-        # it's re-checked here (active + not expired) before the order is
-        # created — so a code that expired between "Apply" and "Place Order"
-        # can't sneak a discount through.
+        # it's re-checked here (active, within its window, under its usage
+        # cap) before the order is created — so a code that expired, got
+        # deactivated, or hit its usage limit between "Apply" and "Place
+        # Order" can't sneak a discount through. The discount amount itself
+        # is always recomputed here from the coupon + submitted items
+        # (never trusted from the client), applied ONCE to the eligible
+        # subtotal — the whole order, or just the coupon's selected
+        # products — never split up per product line.
         coupon_code = (data.get("coupon_code") or "").strip().upper()
-        discount_amount = data.get("discount_amount") or 0
+        coupon = None
+        discount_amount = 0
         if coupon_code:
             coupon, error = _lookup_valid_coupon(coupon_code)
             if error:
                 return JsonResponse({"error": error}, status=400)
+            discount_amount = coupon.calculate_discount(items)
 
         with transaction.atomic():
+            if coupon:
+                # Lock the row so two near-simultaneous checkouts can't both
+                # slip in under a usage cap of 1.
+                coupon = Coupon.objects.select_for_update().get(id=coupon.id)
+                if not coupon.is_valid():
+                    return JsonResponse({"error": "That coupon code is no longer available."}, status=400)
+                coupon.used_count += 1
+                update_fields = ["used_count"]
+                if coupon.max_uses is not None and coupon.used_count >= coupon.max_uses:
+                    coupon.is_active = False
+                    update_fields.append("is_active")
+                coupon.save(update_fields=update_fields)
+
             order = Order.objects.create(
                 customer_name=data["customer_name"],
                 customer_email=data["customer_email"],
