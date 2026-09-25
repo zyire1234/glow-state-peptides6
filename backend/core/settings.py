@@ -81,6 +81,35 @@ TEMPLATES = [
 WSGI_APPLICATION = "core.wsgi.application"
 
 # ---------------------------------------------------------------------------
+# Logging — by default Django only prints tracebacks to the console when
+# DEBUG=True, which means unhandled 500 errors in production leave no trace
+# in the Render logs at all. This forces every unhandled exception to be
+# printed to stdout/stderr (visible in Render's Logs tab) regardless of
+# DEBUG, without ever exposing tracebacks to end users (that's controlled by
+# DEBUG, unrelated to this).
+# ---------------------------------------------------------------------------
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Database — PostgreSQL, configured via the DATABASE_URL environment
 # variable (provided automatically by Render when a PostgreSQL database is
 # attached to this service).
