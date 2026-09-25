@@ -1315,6 +1315,45 @@ export default function App() {
                   <div className="border-t border-white/10 pt-4 space-y-2">
                     <h4 className="font-display font-semibold text-white uppercase text-xs tracking-wider">Order Summary</h4>
                     <div className="bg-black/40 border border-white/10 rounded-xl p-3.5 space-y-1.5">
+                      {/* Discount code — applies once to the order total, never per product */}
+                      <div className="pb-2.5 mb-1.5 border-b border-white/10 space-y-1.5">
+                        {appliedCoupon ? (
+                          <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3 py-2">
+                            <span className="text-[11px] text-emerald-400 font-semibold">
+                              "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleRemoveCoupon}
+                              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={couponInput}
+                              onChange={(e) => { setCouponInput(e.target.value); setCouponError(''); }}
+                              placeholder="Discount code"
+                              className="flex-1 bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 uppercase placeholder:normal-case"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleApplyCoupon}
+                              disabled={couponChecking || !couponInput.trim()}
+                              className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0"
+                            >
+                              {couponChecking ? '...' : 'Apply'}
+                            </button>
+                          </div>
+                        )}
+                        {couponError && (
+                          <p className="text-[10px] text-red-400">{couponError}</p>
+                        )}
+                      </div>
+
                       <div className="flex justify-between text-slate-400">
                         <span>Subtotal</span>
                         <span className="font-mono">${getCartTotal().toFixed(2)} AUD</span>
