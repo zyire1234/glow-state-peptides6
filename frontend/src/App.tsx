@@ -1055,44 +1055,20 @@ export default function App() {
 
                   {cart.length > 0 && (
                     <div className="border-t border-white/10 pt-5 space-y-4">
-                      {/* Discount code */}
-                      <div className="space-y-1.5">
-                        {appliedCoupon ? (
-                          <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3.5 py-2.5">
-                            <span className="text-[11px] text-emerald-400 font-semibold">
-                              "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleRemoveCoupon}
-                              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={couponInput}
-                              onChange={(e) => { setCouponInput(e.target.value); setCouponError(''); }}
-                              placeholder="Discount code"
-                              className="flex-1 bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:border-purple-500 uppercase placeholder:normal-case"
-                            />
-                            <button
-                              type="button"
-                              onClick={handleApplyCoupon}
-                              disabled={couponChecking || !couponInput.trim()}
-                              className="px-4 py-2.5 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0"
-                            >
-                              {couponChecking ? '...' : 'Apply'}
-                            </button>
-                          </div>
-                        )}
-                        {couponError && (
-                          <p className="text-[10px] text-red-400">{couponError}</p>
-                        )}
-                      </div>
+                      {appliedCoupon && (
+                        <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3.5 py-2.5">
+                          <span className="text-[11px] text-emerald-400 font-semibold">
+                            "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoupon}
+                            className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
 
                       {appliedCoupon && (
                         <div className="flex justify-between items-center text-[11px] text-emerald-400">
