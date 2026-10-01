@@ -29,6 +29,7 @@ urlpatterns = [
     path("coupons/validate", views.coupon_validate),
     path("coupons", views.coupons_collection),
     path("coupons/<int:coupon_id>", views.coupon_detail),
+    path("coupons/<int:coupon_id>/notify", views.coupon_notify),
 
     # Orders
     path("orders", views.orders_collection),
