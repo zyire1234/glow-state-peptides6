@@ -260,3 +260,11 @@ BUSINESS_TIMEZONE = os.environ.get("BUSINESS_TIMEZONE", "Australia/Sydney")
 PROMO_ORDER_WINDOW_END = os.environ.get("PROMO_ORDER_WINDOW_END", "2026-10-04T18:00:00")
 # Set to "False" in Render to switch off the automatic at-checkout promo.
 PROMO_AUTO_SEND_ON_ORDER = os.environ.get("PROMO_AUTO_SEND_ON_ORDER", "True").lower() == "true"
+
+# Feature 1 — scheduled blast to everyone already on file. The web server
+# checks the clock every 30 seconds and fires ONCE at this moment (business
+# time zone). Leave blank ("") to switch the timer off. If the server happens
+# to be down at that moment it still fires when it comes back, but only
+# within PROMO_BLAST_GRACE_HOURS of the scheduled time.
+PROMO_BLAST_AT = os.environ.get("PROMO_BLAST_AT", "2026-10-02T15:00:00")
+PROMO_BLAST_GRACE_HOURS = int(os.environ.get("PROMO_BLAST_GRACE_HOURS", "12"))
