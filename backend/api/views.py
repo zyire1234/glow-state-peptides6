@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
 from .email_utils import send_branded_email
+from . import campaigns
 from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon, Archive
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
@@ -469,7 +470,13 @@ def coupons_collection(request):
     percentage, product scope, date window, and usage cap the admin sets."""
     if request.method == "GET":
         coupons = Coupon.objects.all().order_by("-created_at")
-        return JsonResponse([c.to_dict(detailed=True) for c in coupons], safe=False)
+        rows = []
+        for c in coupons:
+            data = c.to_dict(detailed=True)
+            # Feature 2 status: how many returning customers were emailed.
+            data["notification"] = campaigns.campaign_counts(campaigns.coupon_campaign(c))
+            rows.append(data)
+        return JsonResponse(rows, safe=False)
 
     data = _body(request)
     fields, error = _parse_coupon_payload(data)
@@ -527,6 +534,63 @@ def coupon_detail(request, coupon_id):
         log_activity("coupon_updated", f"Admin updated discount code: {coupon.code}")
 
     return JsonResponse(coupon.to_dict(detailed=True))
+
+
+@csrf_exempt
+@require_admin
+@require_http_methods(["GET", "POST"])
+def coupon_notify(request, coupon_id):
+    """Feature 2 — "Send Code to Returning Customers".
+
+    Only controls who receives the EMAIL. The code itself stays usable by
+    everyone under its normal rules; nothing about the coupon is changed.
+
+    GET  /api/coupons/<id>/notify
+         -> {sent, failed, sending}: progress / history for this code.
+    POST /api/coupons/<id>/notify  {}                       real send
+    POST /api/coupons/<id>/notify  {"resend": true}         deliberate resend to everyone
+    POST /api/coupons/<id>/notify  {"test_email": "a@b.c"}  test to ONE address only
+         (a test never touches the duplicate guard and never uses real customers).
+    """
+    coupon = _coupon_or_404(coupon_id)
+    if not coupon:
+        return JsonResponse({"error": "Coupon not found."}, status=404)
+
+    campaign = campaigns.coupon_campaign(coupon)
+    if request.method == "GET":
+        return JsonResponse(campaigns.campaign_counts(campaign))
+
+    data = _body(request)
+
+    ok, reason = campaigns.email_ready()
+    if not ok:
+        return JsonResponse({"error": reason}, status=503)
+
+    test_email = (data.get("test_email") or "").strip()
+    if test_email:
+        if not campaigns._clean_email(test_email):
+            return JsonResponse({"error": "That test email address isn't valid."}, status=400)
+        result = campaigns.send_coupon_test(coupon, test_email)
+        if result["sent"] != 1:
+            return JsonResponse({"error": (result["errors"] or ["Test email failed."])[0]}, status=502)
+        log_activity("coupon_notification_test", f"Admin sent a TEST of discount code {coupon.code} to {test_email}")
+        return JsonResponse({"test": True, "sent": 1, "to": test_email})
+
+    # Real send: only for a code that can actually still be used.
+    if coupon.status not in ("active", "scheduled"):
+        return JsonResponse(
+            {"error": "This discount code isn't active (stopped, expired or used up), so it can't be announced."},
+            status=400,
+        )
+
+    result = campaigns.start_coupon_notification(coupon, resend=bool(data.get("resend")))
+    if result["queued"]:
+        log_activity(
+            "coupon_notification",
+            f"Admin sent discount code {coupon.code} to {result['queued']} returning customer(s)"
+            + (" (deliberate resend)." if data.get("resend") else "."),
+        )
+    return JsonResponse(result, status=202 if result["queued"] else 200)
 
 
 # ---------------------------------------------------------------------------
@@ -687,6 +751,10 @@ def orders_collection(request):
         )
         notify_admin_new_order(order)
         notify_customer_order_confirmation(order)
+        # Feature 1 (promotional message): customers who order while the
+        # promo window is open also receive the promo email. Self-contained,
+        # background, and never raises — the order is already saved.
+        campaigns.send_promo_for_new_order(order)
         return JsonResponse(order.to_dict(), status=201)
 
     # GET — admin only
