@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, ClipboardList, Package, Activity as ActivityIcon, Mail, 
   LogIn, LogOut, Plus, Trash2, Edit, Check, AlertCircle, RefreshCw, X, TrendingUp, DollarSign, KeyRound,
-  Archive as ArchiveIcon, Download, RotateCcw, Percent, Ban, PlayCircle
+  Archive as ArchiveIcon, Download, RotateCcw, Percent, Ban, PlayCircle, Send
 } from 'lucide-react';
 import { API_BASE_URL } from '../lib/apiConfig';
 // Connected to the real Django + SQLite backend. All API calls below use the
@@ -80,6 +80,8 @@ interface Coupon {
   applies_to_all: boolean;
   product_ids?: number[];
   created_at: string;
+  // Returning-customer email notification progress (Feature 2)
+  notification?: { sent: number; failed: number; sending: number };
 }
 
 interface ArchiveRecord {
@@ -148,8 +150,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     max_uses: '' as number | '',
     applies_to_all: true,
     product_ids: [] as number[],
+    notify_returning: false,
   });
   const [couponFormError, setCouponFormError] = useState<string>('');
+  // "Send Code to Returning Customers" status banner (email only — never
+  // affects who can use the code).
+  const [couponNotice, setCouponNotice] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
   const [couponSubmitting, setCouponSubmitting] = useState<boolean>(false);
 
   // Website Cleaning / Archive state — additive
@@ -437,6 +444,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       max_uses: '',
       applies_to_all: true,
       product_ids: [],
+      notify_returning: false,
     });
     setCouponFormError('');
     setShowCouponModal(true);
@@ -453,6 +461,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       max_uses: coupon.max_uses ?? '',
       applies_to_all: coupon.applies_to_all,
       product_ids: coupon.product_ids || [],
+      notify_returning: false,
     });
     setCouponFormError('');
     setShowCouponModal(true);
@@ -463,6 +472,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     setCouponFormError('');
     if (!couponForm.applies_to_all && couponForm.product_ids.length === 0) {
       setCouponFormError('Select at least one product, or switch to "All products".');
+      return;
+    }
+    // Optional: announce the new code to returning customers (email only).
+    const announce = !editingCoupon && couponForm.notify_returning;
+    if (announce && !confirm('Send this discount code to returning customers?\n\nOnly the email goes to returning customers — the code itself can still be used by everyone.')) {
       return;
     }
     setCouponSubmitting(true);
@@ -488,8 +502,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       });
 
       if (res.ok) {
+        const saved = await res.json().catch(() => null);
         setShowCouponModal(false);
         fetchAdminData();
+        if (announce && saved && saved.id) {
+          // Code (and its expiry) come straight from the code just created.
+          sendCouponToReturning(saved as Coupon, { skipConfirm: true });
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         setCouponFormError(err.error || 'Could not save this discount code.');
@@ -498,6 +517,87 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       setCouponFormError('Network failure saving discount code.');
     } finally {
       setCouponSubmitting(false);
+    }
+  };
+
+  // --- "Send Code to Returning Customers" (email notification only) ---------
+  const notifyUrl = (coupon: Coupon) => `${API_BASE_URL}/coupons/${coupon.id}/notify`;
+  const authJsonHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` });
+
+  const sendCouponToReturning = async (
+    coupon: Coupon,
+    opts: { resend?: boolean; skipConfirm?: boolean } = {}
+  ) => {
+    if (!opts.skipConfirm && !confirm(
+      `Send this discount code to returning customers?\n\nCode: ${coupon.code}\nDeadline: ${new Date(coupon.expires_at).toLocaleString()}\n\nOnly the email goes to returning customers — the code itself can still be used by everyone.`
+    )) return;
+
+    setNotifyBusy(true);
+    setCouponNotice({ type: 'info', text: `Sending ${coupon.code} to returning customers…` });
+    try {
+      const res = await fetch(notifyUrl(coupon), {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ resend: !!opts.resend }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCouponNotice({ type: 'error', text: data.error || 'Could not send the notification.' });
+        return;
+      }
+
+      if (!data.queued) {
+        if (data.already_sent > 0 && !opts.resend) {
+          setCouponNotice({ type: 'info', text: `${coupon.code} was already sent to all ${data.already_sent} returning customers. Nothing was sent again.` });
+          setNotifyBusy(false);
+          if (confirm(`"${coupon.code}" has already been sent to ${data.already_sent} returning customers.\n\nSend it again to everyone anyway?`)) {
+            await sendCouponToReturning(coupon, { resend: true, skipConfirm: true });
+          }
+        } else {
+          setCouponNotice({ type: 'info', text: 'There are no returning customer emails on file to send to yet.' });
+        }
+        return;
+      }
+
+      // Emails go out in the background; poll until none are still "sending".
+      let counts = { sent: 0, failed: 0, sending: data.queued as number };
+      for (let i = 0; i < 150 && counts.sending > 0; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const poll = await fetch(notifyUrl(coupon), { headers: { 'Authorization': `Bearer ${token}` } });
+        if (poll.ok) counts = await poll.json();
+      }
+      if (counts.sending > 0) {
+        setCouponNotice({ type: 'info', text: `${coupon.code} is still sending in the background. Check the Activity Log shortly for the result.` });
+      } else if (counts.failed > 0) {
+        setCouponNotice({ type: 'error', text: `${coupon.code}: sent to ${counts.sent} returning customers, but ${counts.failed} failed. Check the Activity Log; use Send again to retry.` });
+      } else {
+        setCouponNotice({ type: 'success', text: `Discount code ${coupon.code} was sent successfully to ${counts.sent} returning customer${counts.sent === 1 ? '' : 's'}.` });
+      }
+    } catch (err) {
+      setCouponNotice({ type: 'error', text: 'Network failure sending the notification.' });
+    } finally {
+      setNotifyBusy(false);
+      fetchAdminData();
+    }
+  };
+
+  // Test email for ONE address you choose — never goes to real customers.
+  const sendCouponTest = async (coupon: Coupon) => {
+    const to = prompt(`Send a TEST of the "${coupon.code}" email to which address?`);
+    if (!to || !to.trim()) return;
+    setCouponNotice({ type: 'info', text: `Sending test to ${to.trim()}…` });
+    try {
+      const res = await fetch(notifyUrl(coupon), {
+        method: 'POST',
+        headers: authJsonHeaders(),
+        body: JSON.stringify({ test_email: to.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setCouponNotice(res.ok
+        ? { type: 'success', text: `Test email for ${coupon.code} sent to ${to.trim()}.` }
+        : { type: 'error', text: data.error || 'Could not send the test email.' });
+    } catch (err) {
+      setCouponNotice({ type: 'error', text: 'Network failure sending the test email.' });
     }
   };
 
@@ -1273,6 +1373,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 }
               />
 
+              {couponNotice && (
+                <div className={`flex items-start gap-2 py-2.5 px-3 rounded-xl border text-[11px] ${
+                  couponNotice.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                  : couponNotice.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                  : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
+                }`}>
+                  {couponNotice.type === 'success' ? <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
+                  <span className="flex-1">{couponNotice.text}</span>
+                  <button onClick={() => setCouponNotice(null)} className="text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              )}
+
               <div className={`${PANEL} overflow-hidden`}>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
@@ -1326,9 +1438,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                             <span className={`px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider ${COUPON_STATUS_STYLE[coupon.status]}`}>
                               {COUPON_STATUS_LABEL[coupon.status]}
                             </span>
+                            {coupon.notification && coupon.notification.sent > 0 && (
+                              <div className="text-slate-500 text-[10px] mt-1.5">Emailed to {coupon.notification.sent} returning customer{coupon.notification.sent === 1 ? '' : 's'}</div>
+                            )}
                           </td>
                           <td className="p-4 text-right">
                             <div className="flex justify-end gap-2">
+                              <button
+                                onClick={() => sendCouponToReturning(coupon)}
+                                disabled={notifyBusy || !(coupon.status === 'active' || coupon.status === 'scheduled')}
+                                className="p-2 text-purple-300 hover:text-white rounded-lg bg-slate-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Send Code to Returning Customers"
+                              >
+                                <Mail className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => sendCouponTest(coupon)}
+                                disabled={notifyBusy}
+                                className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all disabled:opacity-40"
+                                title="Send a test email of this code to one address"
+                              >
+                                <Send className="h-3.5 w-3.5" />
+                              </button>
                               <button
                                 onClick={() => openEditCoupon(coupon)}
                                 className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all"
@@ -1981,6 +2112,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   </div>
                 )}
               </div>
+
+              {!editingCoupon && (
+                <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-3">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={couponForm.notify_returning}
+                      onChange={(e) => setCouponForm({ ...couponForm, notify_returning: e.target.checked })}
+                      className="h-4 w-4 accent-purple-600 mt-0.5"
+                    />
+                    <span>
+                      <span className="font-semibold text-slate-300 block">Send Code to Returning Customers</span>
+                      <span className="text-slate-500 text-[10px] block mt-0.5">
+                        Emails this code and its deadline to previous customers only. The code itself can still be used by everyone.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {couponFormError && (
                 <div className="flex items-center gap-2 py-2 px-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-[11px]">
