@@ -457,3 +457,38 @@ class Archive(models.Model):
             "cutoff_date": self.cutoff_date.isoformat() if self.cutoff_date else None,
             "created_at": self.created_at.isoformat(),
         }
+
+
+class EmailSendLog(models.Model):
+    """Per-recipient record of one-off email campaigns (the promotional
+    message AND the returning-customer discount-code notification).
+
+    It is the ONLY thing the two email features write to, and it exists for
+    one reason: so the same campaign is never sent twice to the same email
+    address. Order / customer records are never touched.
+
+    `campaign` identifies what was sent, e.g. "promo_grand_final_2026" for
+    Feature 1, or "coupon_<coupon id>" for Feature 2 — so the two features
+    can never interfere with each other's duplicate checks.
+    """
+
+    STATUS_CHOICES = [
+        ("sending", "Sending"),
+        ("sent", "Sent"),
+        ("failed", "Failed"),
+    ]
+
+    campaign = models.CharField(max_length=100, db_index=True)
+    email = models.EmailField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="sending")
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["campaign", "email"], name="uniq_campaign_email"),
+        ]
+
+    def __str__(self):
+        return f"{self.campaign} → {self.email} ({self.status})"
