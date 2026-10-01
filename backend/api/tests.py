@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest import mock
 
 from django.core import mail
@@ -150,3 +150,47 @@ class CouponNotificationTests(TestCase):
         self.assertTrue(after.is_valid())
         orders_before = Order.objects.count()
         self.assertEqual(orders_before, 2)  # orders untouched
+
+
+@override_settings(**EMAIL_ON)
+class ScheduledBlastTests(TestCase):
+    def setUp(self):
+        from api import scheduler
+        self.scheduler = scheduler
+        scheduler._warned_not_ready = False
+        make_order("a@x.com", status="paid")
+        make_order("b@x.com", status="cancelled")
+        # 3:00 PM Sydney Friday 2 Oct 2026 = 05:00 UTC
+        self.when = datetime(2026, 10, 2, 5, 0, tzinfo=dt_timezone.utc)
+
+    def test_schedule_resolves_to_3pm_sydney(self):
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00"):
+            self.assertEqual(self.scheduler.scheduled_time(), self.when)
+
+    def test_waits_then_fires_once(self):
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00", PROMO_BLAST_GRACE_HOURS=12):
+            self.assertEqual(self.scheduler.tick(self.when - timedelta(seconds=1)), "waiting")
+            self.assertEqual(len(mail.outbox), 0)
+            self.assertEqual(self.scheduler.tick(self.when), "fired")
+            self.assertEqual(len(mail.outbox), 2)
+            self.assertEqual(self.scheduler.tick(self.when + timedelta(minutes=1)), "done")
+            self.assertEqual(len(mail.outbox), 2)
+
+    def test_does_not_resend_to_people_already_emailed(self):
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00"):
+            campaigns.send_promo_to_previous_customers()  # e.g. manual --blast earlier
+            self.assertEqual(len(mail.outbox), 2)
+            self.scheduler.tick(self.when)
+            self.assertEqual(len(mail.outbox), 2)
+
+    def test_email_not_ready_retries_later(self):
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00", EMAIL_ENABLED=False):
+            self.assertEqual(self.scheduler.tick(self.when), "email-not-ready")
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00"):
+            self.assertEqual(self.scheduler.tick(self.when + timedelta(minutes=1)), "fired")
+
+    def test_too_late_and_disabled(self):
+        with override_settings(PROMO_BLAST_AT="2026-10-02T15:00:00", PROMO_BLAST_GRACE_HOURS=12):
+            self.assertEqual(self.scheduler.tick(self.when + timedelta(hours=13)), "expired")
+        with override_settings(PROMO_BLAST_AT=""):
+            self.assertEqual(self.scheduler.tick(self.when), "disabled")
