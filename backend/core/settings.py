@@ -244,3 +244,19 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+
+# ---------------------------------------------------------------------------
+# Email campaigns (Feature 1: promotional message, Feature 2: returning-
+# customer discount code). All optional / safe defaults.
+# ---------------------------------------------------------------------------
+# The business's local time zone. Django's own TIME_ZONE stays UTC so nothing
+# existing changes; campaign deadlines are converted explicitly to this zone
+# (daylight saving is handled automatically — Sydney moves to AEDT on
+# Sunday 4 Oct 2026).
+BUSINESS_TIMEZONE = os.environ.get("BUSINESS_TIMEZONE", "Australia/Sydney")
+
+# Feature 1 — anyone who places an order up to this moment (business local
+# time, ISO format) automatically receives the promo email at checkout.
+PROMO_ORDER_WINDOW_END = os.environ.get("PROMO_ORDER_WINDOW_END", "2026-10-04T18:00:00")
+# Set to "False" in Render to switch off the automatic at-checkout promo.
+PROMO_AUTO_SEND_ON_ORDER = os.environ.get("PROMO_AUTO_SEND_ON_ORDER", "True").lower() == "true"
