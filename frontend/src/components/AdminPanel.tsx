@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  ShoppingBag, ClipboardList, Package, Activity as ActivityIcon, Mail, 
-  LogIn, LogOut, Plus, Trash2, Edit, Check, AlertCircle, RefreshCw, X, TrendingUp, DollarSign, KeyRound,
-  Archive as ArchiveIcon, Download, RotateCcw, Percent, Ban, PlayCircle, Send
+  ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
+  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink
 } from 'lucide-react';
-import { API_BASE_URL } from '../lib/apiConfig';
-// Connected to the real Django + SQLite backend. All API calls below use the
-// browser's native `fetch` against API_BASE_URL (see src/lib/apiConfig.ts).
+import { Logo } from './components/Logo';
+import { AnnouncementBar } from './components/AnnouncementBar';
+import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
+import { AdminPanel } from './components/AdminPanel';
+import { API_BASE_URL } from './lib/apiConfig';
+import { trackTikTokEvent } from './lib/tiktokEvents';
+// Connected to the real Django + SQLite backend. All `/api/...` calls below
+// use the browser's native `fetch` and are routed to the backend via the
+// Netlify redirect configured in netlify.toml (see backend/README.md).
 
 interface Product {
   id: number;
@@ -22,2218 +27,1491 @@ interface Product {
   has_certificate?: boolean;
 }
 
-interface OrderItem {
-  id: number;
-  product_name: string;
+interface CartItem {
+  product: Product;
   quantity: number;
-  price: number;
 }
 
-interface Order {
-  id: number;
-  customer_name: string;
-  customer_email: string;
-  customer_address: string;
-  payment_method: 'bank_transfer' | 'payid' | 'paypal_invoice';
-  status: 'pending' | 'invoice_sent' | 'paid' | 'shipped' | 'cancelled';
-  total_amount: number;
-  created_at: string;
-  items?: OrderItem[];
+interface PaymentDetails {
+  bank_name: string;
+  account_name: string;
+  bsb: string;
+  account_number: string;
+  paypal_email: string;
+  paypal_client_id: string;
+  paypal_enabled?: boolean;
+  payid_number: string;
+  payid_name: string;
 }
 
-interface Activity {
-  id: number;
-  type: string;
-  description: string;
-  created_at: string;
-}
-
-interface SimulatedEmail {
-  id: number;
-  to: string;
-  subject: string;
-  html?: string;
-  created_at: string;
-  type?: string;
-  sent?: boolean;
-  error?: string | null;
-}
-
-// Website Cleaning / Archive feature (additive) — a manual snapshot of old
-// orders or activity/notification/email logs, moved out of the live tables
-// and stored as a single downloadable JSON blob until the admin deletes it.
-// Discount / coupon codes (additive) — applied once to the overall order
-// total (or, when scoped to specific products, to just those products'
-// share of the total), never recalculated per line item.
-interface Coupon {
-  id: number;
-  code: string;
-  name: string;
-  discount_percent: number;
-  is_active: boolean;
-  starts_at: string | null;
-  expires_at: string;
-  max_uses: number | null;
-  used_count: number;
-  remaining_uses: number | null;
-  status: 'active' | 'scheduled' | 'expired' | 'used_up' | 'stopped';
-  applies_to_all: boolean;
-  product_ids?: number[];
-  created_at: string;
-  // Returning-customer email notification progress (Feature 2)
-  notification?: { sent: number; failed: number; sending: number };
-}
-
-interface ArchiveRecord {
-  id: number;
-  category: 'orders' | 'activities';
-  category_display: string;
-  item_count: number;
-  cutoff_date: string | null;
-  created_at: string;
-}
-
-interface AdminPanelProps {
-  onClose: () => void;
-}
-
-// --- Shared style tokens ---------------------------------------------------
-// One consistent "panel/card" surface used across every tab (dashboard
-// detail panels, orders list, products table wrapper, activity log,
-// email outbox, archive panels, settings form), and one consistent
-// "inner tile" surface for smaller nested items (stat cards, list rows
-// inside a panel). Purely visual — pulling these into one place just
-// keeps every tab's cards/tables/shadows in sync with each other.
-const PANEL = 'bg-slate-900/60 border border-slate-800/80 rounded-2xl shadow-lg';
-const TILE = 'bg-white/5 border border-white/10 rounded-xl';
-
-// Consistent header shape for every tab: a title, an optional one-line
-// description, and an optional right-aligned action/count — so moving
-// between tabs feels like one system instead of different screens.
-const TabHeader: React.FC<{ title: string; description?: string; action?: React.ReactNode }> = ({ title, description, action }) => (
-  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-    <div>
-      <h2 className="text-xl font-display font-bold text-white uppercase tracking-wider">{title}</h2>
-      {description && <p className="text-slate-400 text-xs mt-1 max-w-2xl">{description}</p>}
-    </div>
-    {action && <div className="shrink-0">{action}</div>}
-  </div>
-);
-
-export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [username, setUsername] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
-  const [loginError, setLoginError] = useState<string>('');
-  const [token, setToken] = useState<string>('');
-
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'products' | 'orders' | 'coupons' | 'activities' | 'emails' | 'archive' | 'settings'>('dashboard');
-  const [orderStatusFilter, setOrderStatusFilter] = useState<'all' | 'pending' | 'invoice_sent' | 'paid' | 'shipped' | 'cancelled'>('all');
-
-  // Admin states
+export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [emails, setEmails] = useState<SimulatedEmail[]>([]);
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Form state for Add/Edit Coupon (discount codes) — additive
-  const [showCouponModal, setShowCouponModal] = useState<boolean>(false);
-  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
-  const [couponForm, setCouponForm] = useState({
-    code: '',
+  // Layout states
+  const [activePage, setActivePage] = useState<'home' | 'shop' | 'calculator' | 'policies' | 'payment-info'>('home');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+
+  // Filter category state
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+
+  // Checkout state
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'details' | 'success'>('cart');
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'payid' | 'paypal_invoice'>('bank_transfer');
+
+  // Coupon code state
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_percent: number; applies_to_all: boolean; product_ids?: number[] } | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [shippingDetails, setShippingDetails] = useState({
     name: '',
-    discount_percent: 10,
-    starts_at: '',
-    expires_at: '',
-    max_uses: '' as number | '',
-    applies_to_all: true,
-    product_ids: [] as number[],
-    notify_returning: false,
+    email: '',
+    address: '',
+    postcode: '',
+    state: '',
   });
-  const [couponFormError, setCouponFormError] = useState<string>('');
-  // "Send Code to Returning Customers" status banner (email only — never
-  // affects who can use the code).
-  const [couponNotice, setCouponNotice] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
-  const [notifyBusy, setNotifyBusy] = useState<boolean>(false);
-  const [couponSubmitting, setCouponSubmitting] = useState<boolean>(false);
-
-  // Website Cleaning / Archive state — additive
-  const [archives, setArchives] = useState<ArchiveRecord[]>([]);
-  const [archiveCategory, setArchiveCategory] = useState<'orders' | 'activities'>('orders');
-  const [archiveBeforeDate, setArchiveBeforeDate] = useState<string>('');
-  const [archiveBusy, setArchiveBusy] = useState<boolean>(false);
-  const [archiveMessage, setArchiveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Form states for Add/Edit Product
-  const [showProductModal, setShowProductModal] = useState<boolean>(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [prodForm, setProdForm] = useState({
-    name: '',
-    description: '',
-    price: 0,
-    image_url: '',
-    is_best_selling: false,
-    is_discounted: false,
-    discount_price: 0,
-    category: 'Healing & Recovery',
-    stock: 20
-  });
-
-  // Product Certificate (COA) upload state — additive
-  const [certUploading, setCertUploading] = useState<boolean>(false);
-  const [certError, setCertError] = useState<string>('');
-
-  // Selected email for visual preview modal
-  const [selectedEmail, setSelectedEmail] = useState<SimulatedEmail | null>(null);
-
-  // Change Password form state
-  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
-  const [pwMessage, setPwMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [pwSubmitting, setPwSubmitting] = useState<boolean>(false);
-
-  // PayPal on/off switch (public checkout)
-  const [paypalEnabled, setPaypalEnabled] = useState<boolean | null>(null);
-  const [paypalBusy, setPaypalBusy] = useState<boolean>(false);
-  const [paypalMessage, setPaypalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [placedOrder, setPlacedOrder] = useState<any>(null);
+  // Guards against double-tap / double-click on "Place Order" creating two orders.
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const placingOrderRef = useRef(false);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
+  // PayPal can be switched off from the admin panel; treat "unknown" as enabled.
+  const paypalEnabled = paymentDetails?.paypal_enabled !== false;
+  useEffect(() => {
+    if (!paypalEnabled && paymentMethod === 'paypal_invoice') setPaymentMethod('bank_transfer');
+  }, [paypalEnabled, paymentMethod]);
+  const [paypalError, setPaypalError] = useState<string>('');
+  // True while we're still waiting on the very first successful response from
+  // the backend. Render's free-tier server "sleeps" after ~15 minutes of no
+  // traffic and takes 30-60s to wake back up on the next request. Without this
+  // flag, a sleeping backend makes payment/bank details silently fall back to
+  // hardcoded placeholder text (e.g. "Glow State" / "Commonwealth Bank"),
+  // which looks exactly like saved admin changes were lost — they weren't,
+  // the request just hasn't succeeded yet.
+  const [backendWakingUp, setBackendWakingUp] = useState<boolean>(true);
 
   useEffect(() => {
-    const savedToken = localStorage.getItem('glow_admin_token');
-    const savedUsername = localStorage.getItem('glow_admin_username');
-    if (savedToken) {
-      setToken(savedToken);
-      if (savedUsername) setUsername(savedUsername);
-      setIsAuthenticated(true);
-    }
-  }, []);
+    fetchProducts();
+  }, [isAdminOpen]); // Refetch products when closing admin panel in case details were updated
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchAdminData();
-    }
-  }, [isAuthenticated, activeTab]);
+    fetchPaymentDetails();
+  }, [isAdminOpen]); // Refetch in case admin updated bank/PayPal details
 
-  // The Django REST Framework endpoints serialize DecimalField values
-  // (price, discount_price, total_amount, order item price) as strings
-  // (e.g. "49.99"), not numbers. Coerce them to real numbers right after
-  // fetching so every .toFixed() call below the app is safe instead of
-  // crashing the whole Admin Panel with a blank screen.
-  const normalizeProducts = (data: any[]): Product[] =>
-    data.map((p) => ({
-      ...p,
-      price: Number(p.price),
-      discount_price:
-        p.discount_price === null || p.discount_price === undefined
-          ? p.discount_price
-          : Number(p.discount_price),
-    }));
+  // TikTok Pixel — ViewContent. This app shows product detail as a modal
+  // (`selectedProduct`) rather than separate product pages, so "viewing a
+  // product page" is represented here by that modal opening. Uses the real
+  // id/name/price of the product coming from the backend-fetched `products`
+  // data (falls back to discount_price when the product is on sale, same
+  // logic used everywhere else in this file for the displayed price).
+  // Uses the `contents` array schema (not just top-level content_id) so
+  // TikTok can match this event to a Catalog product entry.
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const price = selectedProduct.is_discounted && selectedProduct.discount_price
+      ? selectedProduct.discount_price
+      : selectedProduct.price;
+    trackTikTokEvent('ViewContent', {
+      contents: [{
+        content_id: String(selectedProduct.id),
+        content_name: selectedProduct.name,
+        content_category: selectedProduct.category,
+        quantity: 1,
+        price: price,
+      }],
+      content_type: 'product',
+      value: price,
+      currency: 'AUD',
+    });
+  }, [selectedProduct]);
 
-  const normalizeOrders = (data: any[]): Order[] =>
-    data.map((o) => ({
-      ...o,
-      total_amount: Number(o.total_amount),
-      items: o.items?.map((it: any) => ({ ...it, price: Number(it.price) })),
-    }));
+  // TikTok Pixel — ViewContent for the shop/listing page itself (separate
+  // from the single-product modal above). Fires once each time the shop
+  // page is opened (not on every category filter click, to avoid event
+  // spam), using every real product currently loaded from the backend.
+  useEffect(() => {
+    if (activePage !== 'shop' || products.length === 0) return;
+    const items = products.map(p => {
+      const price = p.is_discounted && p.discount_price ? p.discount_price : p.price;
+      return { content_id: String(p.id), content_name: p.name, content_category: p.category, quantity: 1, price };
+    });
+    const totalValue = items.reduce((sum, item) => sum + item.price, 0);
+    trackTikTokEvent('ViewContent', {
+      contents: items,
+      content_type: 'product',
+      value: totalValue,
+      currency: 'AUD',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, products.length]);
 
-  const fetchAdminData = async () => {
-    setLoading(true);
+  const fetchPaymentDetails = async (attempt = 0) => {
     try {
-      const headers = { 'Authorization': `Bearer ${token}` };
+      const res = await fetch(`${API_BASE_URL}/payment-details`);
+      if (res.ok) {
+        const data = await res.json();
+        setPaymentDetails(data);
+        setBackendWakingUp(false);
+        return;
+      }
+      throw new Error(`Payment details request failed with status ${res.status}`);
+    } catch (err) {
+      console.error('Error fetching payment details:', err);
+      // Retry a few times with backoff to ride out a cold-starting backend
+      // instead of immediately showing placeholder defaults as if they were real.
+      if (attempt < 5) {
+        const delayMs = Math.min(3000 * (attempt + 1), 12000);
+        setTimeout(() => fetchPaymentDetails(attempt + 1), delayMs);
+      } else {
+        // Give up treating this as "still waking up" after ~5 retries so the
+        // UI doesn't spin forever if the backend is genuinely down.
+        setBackendWakingUp(false);
+      }
+    }
+  };
 
-      if (activeTab === 'dashboard') {
-        const pRes = await fetch(`${API_BASE_URL}/products/`);
-        const oRes = await fetch(`${API_BASE_URL}/orders/`, { headers });
-        const aRes = await fetch(`${API_BASE_URL}/activities`, { headers });
-        if (pRes.ok) setProducts(normalizeProducts(await pRes.json()));
-        if (oRes.ok) setOrders(normalizeOrders(await oRes.json()));
-        if (aRes.ok) setActivities(await aRes.json());
-      } else if (activeTab === 'products') {
-        const res = await fetch(`${API_BASE_URL}/products/`);
-        if (res.ok) setProducts(normalizeProducts(await res.json()));
-      } else if (activeTab === 'orders') {
-        const res = await fetch(`${API_BASE_URL}/orders/`, { headers });
-        if (res.ok) setOrders(normalizeOrders(await res.json()));
-      } else if (activeTab === 'activities') {
-        const res = await fetch(`${API_BASE_URL}/activities`, { headers });
-        if (res.ok) setActivities(await res.json());
-      } else if (activeTab === 'emails') {
-        const res = await fetch(`${API_BASE_URL}/email-preview`, { headers });
-        if (res.ok) setEmails(await res.json());
-      } else if (activeTab === 'archive') {
-        const res = await fetch(`${API_BASE_URL}/archive`, { headers });
-        if (res.ok) setArchives(await res.json());
-      } else if (activeTab === 'settings') {
-        const res = await fetch(`${API_BASE_URL}/payment-details`);
-        if (res.ok) {
-          const d = await res.json();
-          setPaypalEnabled(d.paypal_enabled !== false);
-        }
-      } else if (activeTab === 'coupons') {
-        const [cRes, pRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/coupons`, { headers }),
-          fetch(`${API_BASE_URL}/products/`),
-        ]);
-        if (cRes.ok) setCoupons(await cRes.json());
-        if (pRes.ok) setProducts(normalizeProducts(await pRes.json()));
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE_URL}/products/`);
+      if (res.ok) {
+        const data = await res.json();
+        // The Django REST Framework endpoint serializes DecimalField values
+        // (price, discount_price) as strings (e.g. "49.99"), not numbers.
+        // Coerce them to real numbers here, once, so every .toFixed() call
+        // below the app safely works instead of crashing the whole page.
+        const normalized: Product[] = (data as any[]).map((p) => ({
+          ...p,
+          price: Number(p.price),
+          discount_price:
+            p.discount_price === null || p.discount_price === undefined
+              ? p.discount_price
+              : Number(p.discount_price),
+        }));
+        setProducts(normalized);
       }
     } catch (err) {
-      console.error('Error fetching admin details', err);
+      console.error('Error fetching products:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError('');
+  // Cart operations
+  const addToCart = (product: Product, quantity = 1) => {
+    setCart(prev => {
+      const existing = prev.find(item => item.product.id === product.id);
+      if (existing) {
+        return prev.map(item => 
+          item.product.id === product.id 
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      }
+      return [...prev, { product, quantity }];
+    });
+    setIsCartOpen(true);
+
+    // TikTok Pixel — AddToCart. Fires exactly once per call to this function
+    // (i.e. once per actual "Add to Cart" click), using the real product that
+    // was clicked — never on page load, never per render. Uses the `contents`
+    // array schema so TikTok can match this event to a Catalog product entry.
+    const price = product.is_discounted && product.discount_price
+      ? product.discount_price
+      : product.price;
+    trackTikTokEvent('AddToCart', {
+      contents: [{
+        content_id: String(product.id),
+        content_name: product.name,
+        content_category: product.category,
+        quantity: quantity,
+        price: price,
+      }],
+      content_type: 'product',
+      value: price * quantity,
+      currency: 'AUD',
+    });
+  };
+
+  const removeFromCart = (productId: number) => {
+    setCart(prev => prev.filter(item => item.product.id !== productId));
+  };
+
+  const updateCartQty = (productId: number, qty: number) => {
+    if (qty <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => prev.map(item => 
+      item.product.id === productId ? { ...item, quantity: qty } : item
+    ));
+  };
+
+  const getCartTotal = () => {
+    return cart.reduce((sum, item) => {
+      const price = item.product.is_discounted && item.product.discount_price 
+        ? item.product.discount_price 
+        : item.product.price;
+      return sum + (price * item.quantity);
+    }, 0);
+  };
+
+  // Flat-rate shipping fee applied to every order once there's something in the cart.
+  // Orders over the free-shipping threshold ship free (express). Threshold is
+  // checked against the pre-discount subtotal so a coupon can't be stacked
+  // with free shipping unless the order already qualified on its own.
+  const SHIPPING_FEE = 10;
+  const FREE_SHIPPING_THRESHOLD = 160;
+  const getShippingFee = () => {
+    if (cart.length === 0) return 0;
+    return getCartTotal() > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+  };
+
+  // Coupon code — validated against the backend on "Apply" (and re-checked
+  // there again on order submit), so an expired/invalid code never reduces
+  // the total the customer actually pays. The discount is always applied
+  // ONCE to the eligible subtotal (the whole cart, or — if the admin scoped
+  // the code to specific products — just the portion of the cart made up of
+  // those products), never recalculated separately per product line.
+  const getDiscountAmount = () => {
+    if (!appliedCoupon || cart.length === 0) return 0;
+    const eligibleSubtotal = appliedCoupon.applies_to_all
+      ? getCartTotal()
+      : cart.reduce((sum, item) => {
+          if (!appliedCoupon.product_ids?.includes(item.product.id)) return sum;
+          const price = item.product.is_discounted && item.product.discount_price
+            ? item.product.discount_price
+            : item.product.price;
+          return sum + price * item.quantity;
+        }, 0);
+    return eligibleSubtotal * (appliedCoupon.discount_percent / 100);
+  };
+
+  const getDiscountedSubtotal = () => {
+    return Math.max(0, getCartTotal() - getDiscountAmount());
+  };
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponChecking(true);
+    setCouponError('');
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/coupons/validate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ code }),
       });
       const data = await res.json();
       if (res.ok) {
-        localStorage.setItem('glow_admin_token', data.token);
-        localStorage.setItem('glow_admin_username', username);
-        setToken(data.token);
-        setIsAuthenticated(true);
-      } else {
-        setLoginError(data.error || 'Authentication failed');
-      }
-    } catch (err) {
-      setLoginError('Could not reach backend authentication endpoint.');
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('glow_admin_token');
-    localStorage.removeItem('glow_admin_username');
-    setToken('');
-    setIsAuthenticated(false);
-  };
-
-  const handleTogglePaypal = async () => {
-    if (paypalEnabled === null || paypalBusy) return;
-    const next = !paypalEnabled;
-    setPaypalBusy(true);
-    setPaypalMessage(null);
-    try {
-      const res = await fetch(`${API_BASE_URL}/payment-details/paypal-toggle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ enabled: next }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setPaypalMessage({ type: 'error', text: data.error || 'Could not update PayPal. Please try again.' });
-      } else {
-        setPaypalEnabled(data.paypal_enabled !== false);
-        setPaypalMessage({
-          type: 'success',
-          text: next ? 'PayPal is now ON and visible to customers.' : 'PayPal is now OFF and hidden from customers.',
-        });
-      }
-    } catch {
-      setPaypalMessage({ type: 'error', text: 'Network error. Please try again.' });
-    } finally {
-      setPaypalBusy(false);
-    }
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwMessage(null);
-
-    if (pwForm.newPassword !== pwForm.confirmPassword) {
-      setPwMessage({ type: 'error', text: 'New password and confirmation do not match.' });
-      return;
-    }
-    if (pwForm.newPassword.length < 8) {
-      setPwMessage({ type: 'error', text: 'New password must be at least 8 characters.' });
-      return;
-    }
-
-    setPwSubmitting(true);
-    try {
-      const res = await fetch(`${API_BASE_URL}/auth/change-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          username,
-          current_password: pwForm.currentPassword,
-          new_password: pwForm.newPassword,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setPwMessage({ type: 'success', text: 'Password updated successfully.' });
-        setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      } else {
-        setPwMessage({ type: 'error', text: data.error || 'Unable to update password.' });
-      }
-    } catch (err) {
-      setPwMessage({ type: 'error', text: 'Could not reach the authentication service.' });
-    } finally {
-      setPwSubmitting(false);
-    }
-  };
-
-  // Product actions
-  const openAddProduct = () => {
-    setEditingProduct(null);
-    setProdForm({
-      name: '',
-      description: '',
-      price: 100,
-      image_url: 'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&fit=crop&q=80&w=600',
-      is_best_selling: false,
-      is_discounted: false,
-      discount_price: 0,
-      category: 'Healing & Recovery',
-      stock: 20
-    });
-    setCertError('');
-    setShowProductModal(true);
-  };
-
-  const openEditProduct = (prod: Product) => {
-    setEditingProduct(prod);
-    setProdForm({
-      name: prod.name,
-      description: prod.description,
-      price: prod.price,
-      image_url: prod.image_url,
-      is_best_selling: prod.is_best_selling,
-      is_discounted: prod.is_discounted,
-      discount_price: prod.discount_price || 0,
-      category: prod.category,
-      stock: prod.stock
-    });
-    setCertError('');
-    setShowProductModal(true);
-  };
-
-  const saveProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const url = editingProduct ? `${API_BASE_URL}/products/${editingProduct.id}/` : `${API_BASE_URL}/products/`;
-      const method = editingProduct ? 'PUT' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...prodForm,
-          discount_price: prodForm.is_discounted ? prodForm.discount_price : null
-        })
-      });
-
-      if (res.ok) {
-        setShowProductModal(false);
-        fetchAdminData();
-      } else {
-        const err = await res.json();
-        alert(`Error: ${err.error}`);
-      }
-    } catch (err) {
-      alert('Network failure saving product.');
-    }
-  };
-
-  const deleteProduct = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this product from the catalog?')) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/products/${id}/`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchAdminData();
-      } else {
-        alert('Could not delete product.');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // --- Discount / coupon codes (additive) -----------------------------------
-  // Local datetime input (yyyy-MM-ddThh:mm) <-> ISO helpers, since <input
-  // type="datetime-local"> needs the former but the API wants the latter.
-  const toLocalInputValue = (iso: string | null) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
-  const openAddCoupon = () => {
-    setEditingCoupon(null);
-    const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    setCouponForm({
-      code: '',
-      name: '',
-      discount_percent: 10,
-      starts_at: toLocalInputValue(new Date().toISOString()),
-      expires_at: toLocalInputValue(inOneWeek.toISOString()),
-      max_uses: '',
-      applies_to_all: true,
-      product_ids: [],
-      notify_returning: false,
-    });
-    setCouponFormError('');
-    setShowCouponModal(true);
-  };
-
-  const openEditCoupon = (coupon: Coupon) => {
-    setEditingCoupon(coupon);
-    setCouponForm({
-      code: coupon.code,
-      name: coupon.name || '',
-      discount_percent: coupon.discount_percent,
-      starts_at: toLocalInputValue(coupon.starts_at),
-      expires_at: toLocalInputValue(coupon.expires_at),
-      max_uses: coupon.max_uses ?? '',
-      applies_to_all: coupon.applies_to_all,
-      product_ids: coupon.product_ids || [],
-      notify_returning: false,
-    });
-    setCouponFormError('');
-    setShowCouponModal(true);
-  };
-
-  const saveCoupon = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCouponFormError('');
-    if (!couponForm.applies_to_all && couponForm.product_ids.length === 0) {
-      setCouponFormError('Select at least one product, or switch to "All products".');
-      return;
-    }
-    // Optional: announce the new code to returning customers (email only).
-    const announce = !editingCoupon && couponForm.notify_returning;
-    if (announce && !confirm('Send this discount code to returning customers?\n\nOnly the email goes to returning customers — the code itself can still be used by everyone.')) {
-      return;
-    }
-    setCouponSubmitting(true);
-    try {
-      const url = editingCoupon ? `${API_BASE_URL}/coupons/${editingCoupon.id}` : `${API_BASE_URL}/coupons`;
-      const method = editingCoupon ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          code: couponForm.code,
-          name: couponForm.name,
-          discount_percent: couponForm.discount_percent,
-          starts_at: couponForm.starts_at ? new Date(couponForm.starts_at).toISOString() : undefined,
-          expires_at: new Date(couponForm.expires_at).toISOString(),
-          max_uses: couponForm.max_uses === '' ? null : Number(couponForm.max_uses),
-          applies_to_all: couponForm.applies_to_all,
-          product_ids: couponForm.applies_to_all ? [] : couponForm.product_ids,
-        })
-      });
-
-      if (res.ok) {
-        const saved = await res.json().catch(() => null);
-        setShowCouponModal(false);
-        fetchAdminData();
-        if (announce && saved && saved.id) {
-          // Code (and its expiry) come straight from the code just created.
-          sendCouponToReturning(saved as Coupon, { skipConfirm: true });
-        }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        setCouponFormError(err.error || 'Could not save this discount code.');
-      }
-    } catch (err) {
-      setCouponFormError('Network failure saving discount code.');
-    } finally {
-      setCouponSubmitting(false);
-    }
-  };
-
-  // --- "Send Code to Returning Customers" (email notification only) ---------
-  const notifyUrl = (coupon: Coupon) => `${API_BASE_URL}/coupons/${coupon.id}/notify`;
-  const authJsonHeaders = () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` });
-
-  const sendCouponToReturning = async (
-    coupon: Coupon,
-    opts: { resend?: boolean; skipConfirm?: boolean } = {}
-  ) => {
-    if (!opts.skipConfirm && !confirm(
-      `Send this discount code to returning customers?\n\nCode: ${coupon.code}\nDeadline: ${new Date(coupon.expires_at).toLocaleString()}\n\nOnly the email goes to returning customers — the code itself can still be used by everyone.`
-    )) return;
-
-    setNotifyBusy(true);
-    setCouponNotice({ type: 'info', text: `Sending ${coupon.code} to returning customers…` });
-    try {
-      const res = await fetch(notifyUrl(coupon), {
-        method: 'POST',
-        headers: authJsonHeaders(),
-        body: JSON.stringify({ resend: !!opts.resend }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setCouponNotice({ type: 'error', text: data.error || 'Could not send the notification.' });
-        return;
-      }
-
-      if (!data.queued) {
-        if (data.already_sent > 0 && !opts.resend) {
-          setCouponNotice({ type: 'info', text: `${coupon.code} was already sent to all ${data.already_sent} returning customers. Nothing was sent again.` });
-          setNotifyBusy(false);
-          if (confirm(`"${coupon.code}" has already been sent to ${data.already_sent} returning customers.\n\nSend it again to everyone anyway?`)) {
-            await sendCouponToReturning(coupon, { resend: true, skipConfirm: true });
-          }
+        const coupon = {
+          code: data.code,
+          discount_percent: data.discount_percent,
+          applies_to_all: data.applies_to_all !== false,
+          product_ids: data.product_ids as number[] | undefined,
+        };
+        if (!coupon.applies_to_all && !cart.some(item => coupon.product_ids?.includes(item.product.id))) {
+          setAppliedCoupon(null);
+          setCouponError("That code doesn't apply to any item currently in your cart.");
         } else {
-          setCouponNotice({ type: 'info', text: 'There are no returning customer emails on file to send to yet.' });
+          setAppliedCoupon(coupon);
+          setCouponError('');
         }
-        return;
-      }
-
-      // Emails go out in the background; poll until none are still "sending".
-      let counts = { sent: 0, failed: 0, sending: data.queued as number };
-      for (let i = 0; i < 150 && counts.sending > 0; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        const poll = await fetch(notifyUrl(coupon), { headers: { 'Authorization': `Bearer ${token}` } });
-        if (poll.ok) counts = await poll.json();
-      }
-      if (counts.sending > 0) {
-        setCouponNotice({ type: 'info', text: `${coupon.code} is still sending in the background. Check the Activity Log shortly for the result.` });
-      } else if (counts.failed > 0) {
-        setCouponNotice({ type: 'error', text: `${coupon.code}: sent to ${counts.sent} returning customers, but ${counts.failed} failed. Check the Activity Log; use Send again to retry.` });
       } else {
-        setCouponNotice({ type: 'success', text: `Discount code ${coupon.code} was sent successfully to ${counts.sent} returning customer${counts.sent === 1 ? '' : 's'}.` });
+        setAppliedCoupon(null);
+        setCouponError(data.error || 'Invalid coupon code.');
       }
     } catch (err) {
-      setCouponNotice({ type: 'error', text: 'Network failure sending the notification.' });
+      setAppliedCoupon(null);
+      setCouponError('Could not check that code. Please try again.');
     } finally {
-      setNotifyBusy(false);
-      fetchAdminData();
+      setCouponChecking(false);
     }
   };
 
-  // Test email for ONE address you choose — never goes to real customers.
-  const sendCouponTest = async (coupon: Coupon) => {
-    const to = prompt(`Send a TEST of the "${coupon.code}" email to which address?`);
-    if (!to || !to.trim()) return;
-    setCouponNotice({ type: 'info', text: `Sending test to ${to.trim()}…` });
-    try {
-      const res = await fetch(notifyUrl(coupon), {
-        method: 'POST',
-        headers: authJsonHeaders(),
-        body: JSON.stringify({ test_email: to.trim() }),
-      });
-      const data = await res.json().catch(() => ({}));
-      setCouponNotice(res.ok
-        ? { type: 'success', text: `Test email for ${coupon.code} sent to ${to.trim()}.` }
-        : { type: 'error', text: data.error || 'Could not send the test email.' });
-    } catch (err) {
-      setCouponNotice({ type: 'error', text: 'Network failure sending the test email.' });
-    }
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
   };
 
-  const toggleCouponActive = async (coupon: Coupon) => {
-    const turningOff = coupon.status === 'active' || coupon.status === 'scheduled';
-    if (turningOff && !confirm(`Stop discount code "${coupon.code}" now? Customers won't be able to use it anymore.`)) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/coupons/${coupon.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ is_active: !coupon.is_active })
-      });
-      if (res.ok) {
-        fetchAdminData();
-      } else {
-        alert('Could not update this discount code.');
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  // PayPal carries a 3% surcharge (covers PayPal's processing fees) on top
+  // of the (discounted) subtotal + shipping. Bank Transfer and PayID remain fee-free.
+  const PAYPAL_FEE_RATE = 0.03;
+  const getPaypalFee = () => {
+    if (cart.length === 0 || paymentMethod !== 'paypal_invoice') return 0;
+    return (getDiscountedSubtotal() + getShippingFee()) * PAYPAL_FEE_RATE;
   };
 
-  const deleteCoupon = async (coupon: Coupon) => {
-    if (!confirm(`Permanently delete discount code "${coupon.code}"? This cannot be undone.`)) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/coupons/${coupon.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchAdminData();
-      } else {
-        alert('Could not delete this discount code.');
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  // Direct "pay now" link straight to the PayPal account on file — no
+  // integration/API keys required, just PayPal's own hosted payment page
+  // pre-filled with the recipient, amount and a reference note.
+  const getPaypalPayUrl = (amount: number, reference?: string) => {
+    const email = paymentDetails?.paypal_email || 'Glowstatesupport@gmail.com';
+    const params = new URLSearchParams({
+      cmd: '_xclick',
+      business: email,
+      amount: amount.toFixed(2),
+      currency_code: 'AUD',
+      item_name: reference ? `Glow State order ${reference}` : 'Glow State order',
+    });
+    return `https://www.paypal.com/cgi-bin/webscr?${params.toString()}`;
   };
 
-  const COUPON_STATUS_STYLE: Record<Coupon['status'], string> = {
-    active: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-    scheduled: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    expired: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
-    used_up: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-    stopped: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
-  };
-  const COUPON_STATUS_LABEL: Record<Coupon['status'], string> = {
-    active: 'Active',
-    scheduled: 'Scheduled',
-    expired: 'Expired',
-    used_up: 'Usage limit reached',
-    stopped: 'Stopped',
+  // Total the customer actually owes: (discounted) subtotal + flat shipping
+  // fee, plus the PayPal surcharge if that's the selected payment route.
+  const getOrderTotal = () => {
+    return getDiscountedSubtotal() + getShippingFee() + getPaypalFee();
   };
 
-  // Product Certificate (COA) actions — additive, requires an existing product
-  const uploadCertificate = async (file: File) => {
-    if (!editingProduct) return;
-    setCertUploading(true);
-    setCertError('');
-    try {
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Could not read the selected file.'));
-        reader.readAsDataURL(file);
-      });
-      const base64Data = dataUrl.split(',')[1] || '';
-
-      const res = await fetch(`${API_BASE_URL}/products/${editingProduct.id}/certificate/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          filename: file.name,
-          content_type: file.type || 'application/octet-stream',
-          data: base64Data
-        })
-      });
-
-      if (res.ok) {
-        setEditingProduct({ ...editingProduct, has_certificate: true });
-        fetchAdminData();
-      } else {
-        const err = await res.json();
-        setCertError(err.error || 'Failed to upload certificate.');
-      }
-    } catch (err) {
-      setCertError('Network failure uploading certificate.');
-    } finally {
-      setCertUploading(false);
-    }
+  const getCartCount = () => {
+    return cart.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const deleteCertificate = async () => {
-    if (!editingProduct) return;
-    if (!confirm('Are you sure you want to delete this certificate?')) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/products/${editingProduct.id}/certificate/`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setEditingProduct({ ...editingProduct, has_certificate: false });
-        fetchAdminData();
-      } else {
-        setCertError('Could not delete certificate.');
-      }
-    } catch (err) {
-      setCertError('Network failure deleting certificate.');
-    }
-  };
-
-  // Order actions
-  const updateOrderStatus = async (id: number, status: string) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/orders/${id}/`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        fetchAdminData();
-      } else {
-        alert('Could not update status');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  // Website Cleaning / Archive actions — additive
-  const createArchive = async (e: React.FormEvent) => {
+  // Submit Order Request
+  const handlePlaceOrderRequest = async (e: React.FormEvent) => {
     e.preventDefault();
-    setArchiveMessage(null);
+    if (cart.length === 0) return;
+    // Ignore a second submit while the first is still in flight.
+    if (placingOrderRef.current) return;
+    placingOrderRef.current = true;
+    setIsPlacingOrder(true);
 
-    if (!archiveBeforeDate) {
-      setArchiveMessage({ type: 'error', text: 'Choose a cutoff date first.' });
-      return;
-    }
-    const confirmText = archiveCategory === 'orders'
-      ? `Archive all Paid / Shipped / Cancelled orders placed before ${archiveBeforeDate}? They will be moved out of the live Orders list.`
-      : `Archive all activity, notification, and email logs recorded before ${archiveBeforeDate}? They will be moved out of the live Activity Logs.`;
-    if (!confirm(confirmText)) return;
+    const orderTotal = getOrderTotal();
+    const itemsPayload = cart.map(item => ({
+      product_id: item.product.id,
+      product_name: item.product.name,
+      quantity: item.quantity,
+      price: item.product.is_discounted && item.product.discount_price ? item.product.discount_price : item.product.price
+    }));
 
-    setArchiveBusy(true);
+    const payload = {
+      customer_name: shippingDetails.name,
+      customer_email: shippingDetails.email,
+      customer_address: `${shippingDetails.address}, ${shippingDetails.state}, Postcode: ${shippingDetails.postcode}`,
+      payment_method: paymentMethod,
+      total_amount: orderTotal,
+      coupon_code: appliedCoupon?.code || '',
+      discount_amount: getDiscountAmount(),
+      items: itemsPayload
+    };
+
     try {
-      const res = await fetch(`${API_BASE_URL}/archive`, {
+      const res = await fetch(`${API_BASE_URL}/orders`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ category: archiveCategory, before_date: archiveBeforeDate })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
-      // The backend always replies with JSON, but if this endpoint isn't
-      // deployed yet (or an unexpected server error page comes back
-      // instead), res.json() throws — catch that separately so the admin
-      // sees a useful status code instead of a generic "network" message.
-      let data: any = null;
-      try {
-        data = await res.json();
-      } catch {
-        data = null;
-      }
-      if (res.ok && data) {
-        setArchiveMessage({ type: 'success', text: `Archived ${data.item_count} record(s).` });
-        setArchiveBeforeDate('');
-        fetchAdminData();
-      } else {
-        setArchiveMessage({
-          type: 'error',
-          text: data?.error || `Could not create archive (server responded with status ${res.status}). If this just started happening, the backend may still need to be redeployed with the archive feature's code.`
-        });
-      }
-    } catch (err) {
-      setArchiveMessage({ type: 'error', text: 'Could not reach the backend server — check your connection and try again.' });
-    } finally {
-      setArchiveBusy(false);
-    }
-  };
 
-  const downloadArchive = async (archive: ArchiveRecord) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}/download`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (!res.ok) {
-        alert(`Could not download this archive (server responded with status ${res.status}).`);
-        return;
-      }
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `archive-${archive.category}-${archive.id}.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (err) {
-      alert('Could not reach the backend server — check your connection and try again.');
-    }
-  };
-
-  const [restoringArchiveId, setRestoringArchiveId] = useState<number | null>(null);
-
-  const restoreArchive = async (archive: ArchiveRecord) => {
-    if (!confirm(`Unarchive ${archive.item_count} ${archive.category} record(s)? They will go back to the live ${archive.category === 'orders' ? 'Orders' : 'Activity Logs'} list exactly as they were before archiving, and this archive entry will be removed.`)) return;
-    setRestoringArchiveId(archive.id);
-    try {
-      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}/restore`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
       if (res.ok) {
-        const data = await res.json();
-        setArchiveMessage({
-          type: 'success',
-          text: `Unarchived ${data.restored_count} record(s) back to live tables.` + (data.skipped_count ? ` (${data.skipped_count} skipped — ID already in use.)` : '')
-        });
-        fetchAdminData();
+        const orderData = await res.json();
+        setPlacedOrder(orderData);
+        setCheckoutStep('success');
+        setCart([]); // Clear cart
+        handleRemoveCoupon(); // Reset coupon state for the next order
       } else {
-        alert(`Could not restore this archive (server responded with status ${res.status}).`);
+        const errData = await res.json().catch(() => ({}));
+        if (errData.error && errData.error.toLowerCase().includes('coupon')) {
+          // The coupon expired/became invalid between "Apply" and "Place Order" —
+          // drop it and let the customer see the corrected total before retrying.
+          setAppliedCoupon(null);
+          setCouponError(errData.error);
+          setCheckoutStep('cart');
+          alert(`${errData.error} It's been removed — please review your total and try again.`);
+        } else {
+          alert('Failed to submit order request. Please review details and try again.');
+        }
       }
     } catch (err) {
-      alert('Could not reach the backend server — check your connection and try again.');
+      alert('Network failure. Could not connect to order dispatch server.');
     } finally {
-      setRestoringArchiveId(null);
+      placingOrderRef.current = false;
+      setIsPlacingOrder(false);
     }
   };
 
-  const deleteArchive = async (archive: ArchiveRecord) => {
-    if (!confirm(`Permanently delete this archive of ${archive.item_count} record(s)? This cannot be undone — download it first if you need a copy.`)) return;
-    try {
-      const res = await fetch(`${API_BASE_URL}/archive/${archive.id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        fetchAdminData();
-      } else {
-        alert(`Could not delete this archive (server responded with status ${res.status}).`);
+  const getCategories = () => {
+    const categories = ['All', 'Best Sellers', 'Discounted'];
+    products.forEach(p => {
+      if (!categories.includes(p.category)) {
+        categories.push(p.category);
       }
-    } catch (err) {
-      alert('Could not reach the backend server — check your connection and try again.');
-    }
+    });
+    return categories;
   };
 
-  // Stats calculators
-  const getTotalEarnings = () => {
-    return orders
-      .filter(o => o.status === 'paid' || o.status === 'shipped')
-      .reduce((sum, o) => sum + Number(o.total_amount), 0);
+  const getFilteredProducts = () => {
+    if (selectedCategory === 'All') return products;
+    if (selectedCategory === 'Best Sellers') return products.filter(p => p.is_best_selling);
+    if (selectedCategory === 'Discounted') return products.filter(p => p.is_discounted);
+    return products.filter(p => p.category === selectedCategory);
   };
-
-  const getPendingRequestCount = () => {
-    return orders.filter(o => o.status === 'pending').length;
-  };
-
-  const getStatusBadgeClass = (status: Order['status']) => {
-    switch (status) {
-      case 'pending': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
-      case 'invoice_sent': return 'bg-purple-500/10 text-purple-400 border border-purple-500/20';
-      case 'paid': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-      case 'shipped': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
-      case 'cancelled': return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
-      default: return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
-    }
-  };
-
-  const filteredOrders = orderStatusFilter === 'all'
-    ? orders
-    : orders.filter(o => o.status === orderStatusFilter);
-
-  if (!isAuthenticated) {
-    return (
-      <div className="fixed inset-0 bg-slate-950/95 flex items-center justify-center p-4 z-50 animate-fade-in">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 w-full max-w-md shadow-2xl relative">
-          <button 
-            onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
-
-          <div className="text-center mb-6">
-            <h2 className="font-display font-bold text-2xl text-white bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-              ADMIN PORTAL ACCESS
-            </h2>
-            <p className="text-slate-400 text-xs mt-1.5">Secure management backend for Glow State Peptides</p>
-          </div>
-
-          {loginError && (
-            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3 flex items-center gap-2.5 text-rose-400 text-xs mb-4">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{loginError}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Username</label>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Security Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 text-white font-medium rounded-xl text-sm transition-all flex items-center justify-center gap-2"
-            >
-              <LogIn className="h-4 w-4" />
-              Authenticate Administrator
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="fixed inset-0 bg-[#050510] flex flex-col z-50 animate-fade-in">
-      {/* Admin Nav Bar */}
-      <header className="bg-[#08081a] border-b border-white/10 py-4 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="font-display font-extrabold text-lg tracking-wider bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent uppercase flex items-center gap-2">
-            <span>GLOW STATE ADMIN PANEL</span>
-          </div>
-          <span className="bg-purple-500/15 text-purple-400 text-[10px] uppercase font-bold py-1 px-2 rounded-full border border-purple-500/25">
-            Security Active
-          </span>
-        </div>
+    <div className="min-h-screen bg-[#050510] text-gray-100 flex flex-col font-sans selection:bg-purple-600 selection:text-white">
+      {/* 1. Announcement bar */}
+      <AnnouncementBar message="Free express shipping for orders over $160" />
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={fetchAdminData}
-            className="p-2 text-slate-400 hover:text-white rounded-lg bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
-            title="Refresh Data Feed"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 rounded-lg text-xs font-semibold transition-all border border-white/10 hover:border-rose-900/30 cursor-pointer"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span>Sign Out</span>
-          </button>
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-lg bg-white/5 hover:bg-white/10 transition-all cursor-pointer"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Tabs — grouped into sections so related tools sit together */}
-        <aside className="w-64 bg-white/5 border-r border-white/10 p-4 space-y-5 hidden md:block">
-          {[
-            {
-              label: 'Overview',
-              items: [
-                { id: 'dashboard' as const, label: 'Dashboard Overview', icon: <TrendingUp className="h-4 w-4" /> },
-              ],
-            },
-            {
-              label: 'Operations',
-              items: [
-                { id: 'orders' as const, label: `Order Requests (${orders.length})`, icon: <ClipboardList className="h-4 w-4" /> },
-                { id: 'products' as const, label: 'Product Catalog', icon: <Package className="h-4 w-4" /> },
-                { id: 'coupons' as const, label: 'Discount Codes', icon: <Percent className="h-4 w-4" /> },
-              ],
-            },
-            {
-              label: 'Records',
-              items: [
-                { id: 'activities' as const, label: 'Activity Logs', icon: <ActivityIcon className="h-4 w-4" /> },
-                { id: 'emails' as const, label: 'Email Outbox Simulator', icon: <Mail className="h-4 w-4" /> },
-              ],
-            },
-            {
-              label: 'System',
-              items: [
-                { id: 'archive' as const, label: 'Website Cleaning / Archive', icon: <ArchiveIcon className="h-4 w-4" /> },
-                { id: 'settings' as const, label: 'Account Security', icon: <KeyRound className="h-4 w-4" /> },
-              ],
-            },
-          ].map(section => (
-            <div key={section.label} className="space-y-1">
-              <p className="px-4 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">{section.label}</p>
-              {section.items.map(item => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-                    activeTab === item.id
-                      ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 text-purple-300 border border-white/10 font-semibold shadow-md shadow-purple-500/5'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-                  }`}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </aside>
-
-        {/* Content Panel */}
-        <main className="flex-1 overflow-y-auto p-6 bg-[#050510]">
-          {/* Mobile Tab Selector */}
-          <div className="md:hidden flex gap-2 overflow-x-auto pb-4 mb-2">
-            {(['dashboard', 'orders', 'products', 'coupons', 'activities', 'emails', 'archive', 'settings'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border capitalize cursor-pointer ${
-                  activeTab === tab
-                    ? 'bg-purple-500/20 border-purple-500 text-purple-300'
-                    : 'bg-white/5 border-white/10 text-slate-400'
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
+      {/* 2. Primary Navigation Bar */}
+      <nav className="sticky top-8 z-40 bg-[#08081a]/90 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+          <div className="cursor-pointer" onClick={() => { setActivePage('home'); setSelectedProduct(null); }}>
+            <Logo size={62} />
           </div>
 
-          {loading && (
-            <div className="flex items-center gap-3 py-3 px-4 bg-purple-500/10 border border-purple-500/15 rounded-xl text-purple-300 text-xs mb-4">
-              <RefreshCw className="h-4 w-4 animate-spin shrink-0" />
-              <span>Synchronizing database assets...</span>
-            </div>
-          )}
+          {/* Nav links */}
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium">
+            <button
+              onClick={() => { setActivePage('shop'); setSelectedProduct(null); }}
+              className={`transition-all ${activePage === 'shop' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-purple-400'}`}
+            >
+              Shop Peptides
+            </button>
+            <button
+              onClick={() => setActivePage('calculator')}
+              className={`transition-all ${activePage === 'calculator' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-purple-400'}`}
+            >
+              Reconstitution Tool
+            </button>
+            <button
+              onClick={() => setActivePage('payment-info')}
+              className={`transition-all ${activePage === 'payment-info' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-purple-400'}`}
+            >
+              Payment Steps
+            </button>
+            <button
+              onClick={() => setActivePage('policies')}
+              className={`transition-all ${activePage === 'policies' ? 'text-purple-400 font-semibold' : 'text-slate-400 hover:text-purple-400'}`}
+            >
+              Refund / Policy
+            </button>
+          </div>
 
-          {/* Tab 1: Dashboard Overview */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              <TabHeader title="Metrics & Performance" description="A live snapshot of revenue, order volume, and inventory." />
+          <div className="flex items-center gap-4">
+            {/* Cart trigger */}
+            <button
+              onClick={() => setIsCartOpen(true)}
+              className="relative p-2.5 rounded-xl bg-white/5 border border-white/10 hover:border-purple-500/50 text-slate-300 hover:text-purple-300 transition-all flex items-center gap-2 shadow-xl backdrop-blur-sm"
+              id="cart-trigger"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              <span className="hidden sm:inline text-xs font-semibold">Cart</span>
+              {getCartCount() > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 h-5 w-5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full text-[10px] font-bold text-white flex items-center justify-center border border-slate-950">
+                  {getCartCount()}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </nav>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-purple-600/5 blur-xl pointer-events-none" />
-                  <div className="flex items-center justify-between mb-3 relative z-10">
-                    <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Revenue (Confirmed)</span>
-                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
-                      <DollarSign className="h-4 w-4" />
-                    </div>
-                  </div>
-                  <h3 className="font-mono text-2xl font-bold text-white relative z-10">${getTotalEarnings().toFixed(2)}</h3>
-                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Paid or Shipped requests</p>
+      {/* 3. Main content viewport */}
+      <main className="flex-1">
+        {/* HOME PAGE */}
+        {activePage === 'home' && (
+          <div className="animate-fade-in min-h-[70vh] flex flex-col items-center justify-center text-center px-4 py-20 space-y-8">
+            <Logo size={140} />
+            <p className="max-w-xl text-slate-300 text-sm sm:text-base leading-relaxed">
+              Glow State Peptides delivers ultra-pure compounds Australia-wide. Third-party tested. Australian owned and operated.
+            </p>
+            <button
+              onClick={() => setActivePage('shop')}
+              className="py-3 px-8 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-purple-500/10 cursor-pointer"
+            >
+              Enter Shop (18+)
+            </button>
+          </div>
+        )}
+
+        {/* SHOP PAGE */}
+        {activePage === 'shop' && (
+          <div className="animate-fade-in space-y-12 pb-20">
+            
+            {/* Elegant Hero Section */}
+            <section className="relative overflow-hidden py-12 border-b border-white/10">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(147,51,234,0.08),rgba(0,0,0,0))]" />
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_70%,rgba(59,130,246,0.08),rgba(0,0,0,0))]" />
+              
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+                <div className="border-l-2 border-purple-600 pl-8 py-6 bg-gradient-to-r from-purple-900/10 to-transparent rounded-r-2xl">
+                  <span className="inline-flex items-center gap-1.5 py-1 px-3 bg-purple-500/10 text-purple-400 rounded-full text-xs font-semibold border border-purple-500/20 mb-3">
+                    <MapPin className="h-3 w-3" /> Based in Brisbane, Queensland
+                  </span>
+
+                  <h1 className="font-display font-extrabold text-3xl sm:text-4xl lg:text-5xl text-white tracking-tight leading-[1.1] max-w-4xl uppercase mb-3">
+                    Premium Scientific Peptides For{' '}
+                    <span className="bg-gradient-to-r from-purple-400 via-indigo-400 to-blue-400 bg-clip-text text-transparent text-glow-purple">
+                      Advanced Research
+                    </span>
+                  </h1>
+
+                  <p className="text-slate-400 text-sm sm:text-base max-w-3xl leading-relaxed">
+                    Glow State Peptides delivers ultra-pure compounds Australia-wide. Third-party tested. Australian owned and operated.
+                  </p>
                 </div>
 
-                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-blue-600/5 blur-xl pointer-events-none" />
-                  <div className="flex items-center justify-between mb-3 relative z-10">
-                    <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Total Orders</span>
-                    <div className="p-2 bg-blue-500/10 text-blue-400 rounded-lg">
-                      <ShoppingBag className="h-4 w-4" />
+                {/* Trust Badges banner */}
+                <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl text-xs text-slate-400">
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-purple-600/5 blur-xl group-hover:bg-purple-600/10 transition-colors duration-300" />
+                    <div className="h-8 w-8 bg-purple-500/10 rounded-lg flex items-center justify-center text-purple-400 shrink-0">
+                      <Truck className="h-4 w-4" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="font-semibold text-white">Fast Dispatch and Delivery</h4>
+                      <p className="text-[10px] text-slate-500">Orders are dispatched the next business day. Most parcels arrive within 1–3 business days, so you can enjoy your order sooner.</p>
                     </div>
                   </div>
-                  <h3 className="font-mono text-2xl font-bold text-white relative z-10">{orders.length}</h3>
-                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Total customer queries submitted</p>
-                </div>
 
-                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-amber-600/5 blur-xl pointer-events-none" />
-                  <div className="flex items-center justify-between mb-3 relative z-10">
-                    <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Needs Invoice</span>
-                    <div className="p-2 bg-amber-500/10 text-amber-400 rounded-lg">
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-blue-600/5 blur-xl group-hover:bg-blue-600/10 transition-colors duration-300" />
+                    <div className="h-8 w-8 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-400 shrink-0">
                       <ClipboardList className="h-4 w-4" />
                     </div>
-                  </div>
-                  <h3 className="font-mono text-2xl font-bold text-white relative z-10">{getPendingRequestCount()}</h3>
-                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Awaiting bank proof/PayID issue</p>
-                </div>
-
-                <div className={`${TILE} p-5 shadow-xl relative overflow-hidden backdrop-blur-sm`}>
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-pink-600/5 blur-xl pointer-events-none" />
-                  <div className="flex items-center justify-between mb-3 relative z-10">
-                    <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Products Registered</span>
-                    <div className="p-2 bg-purple-500/10 text-purple-400 rounded-lg">
-                      <Package className="h-4 w-4" />
+                    <div className="text-left">
+                      <h4 className="font-semibold text-white">99% Purity Premium Peptides</h4>
+                      <p className="text-[10px] text-slate-500">Third party tested</p>
                     </div>
                   </div>
-                  <h3 className="font-mono text-2xl font-bold text-white relative z-10">{products.length}</h3>
-                  <p className="text-[10px] text-slate-500 mt-1 relative z-10">Active laboratory catalog rows</p>
-                </div>
-              </div>
 
-              {/* Two Column details */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Recent activity */}
-                <div className={`${PANEL} p-5 flex flex-col h-[400px]`}>
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                    <h4 className="font-display font-semibold text-white uppercase tracking-wider text-sm flex items-center gap-2">
-                      <ActivityIcon className="h-4 w-4 text-purple-400" />
-                      <span>Live Website Monitoring Feed</span>
-                    </h4>
-                    <button onClick={() => setActiveTab('activities')} className="text-xs text-purple-400 hover:text-purple-300">View All</button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto space-y-3.5 pr-2">
-                    {activities.slice(0, 8).map(act => (
-                      <div key={act.id} className="text-xs flex gap-2.5 items-start">
-                        <span className="text-[10px] font-mono text-slate-500 shrink-0 mt-0.5">{new Date(act.created_at).toLocaleTimeString()}</span>
-                        <div className="space-y-0.5">
-                          <p className="text-slate-300 font-sans">{act.description}</p>
-                          <span className="text-[10px] uppercase font-mono text-slate-500 tracking-wider font-bold">{act.type.replace('_', ' ')}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {activities.length === 0 && (
-                      <p className="text-slate-500 text-xs text-center py-10">No recent logs reported.</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick Orders pending */}
-                <div className={`${PANEL} p-5 flex flex-col h-[400px]`}>
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
-                    <h4 className="font-display font-semibold text-white uppercase tracking-wider text-sm flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-purple-400" />
-                      <span>Action Required Order Requests</span>
-                    </h4>
-                    <button onClick={() => setActiveTab('orders')} className="text-xs text-purple-400 hover:text-purple-300">Manage Orders</button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                    {orders.filter(o => o.status === 'pending').slice(0, 5).map(order => (
-                      <div key={order.id} className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 flex justify-between items-center text-xs">
-                        <div>
-                          <p className="font-semibold text-white">#{order.id} - {order.customer_name}</p>
-                          <p className="text-slate-400 text-[10px]">{order.customer_email}</p>
-                          <span className="text-purple-400 font-mono font-medium text-[10px] tracking-wider mt-1 inline-block uppercase">
-                            {order.payment_method.replace('_', ' ')}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono text-white font-bold">${Number(order.total_amount).toFixed(2)}</p>
-                          <p className="text-[9px] text-slate-500">{new Date(order.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {orders.filter(o => o.status === 'pending').length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-20 text-slate-500 text-xs">
-                        <Check className="h-6 w-6 text-emerald-500 mb-2" />
-                        <p>Excellent! Zero pending tasks.</p>
-                      </div>
-                    )}
+                  <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-pink-600/5 blur-xl group-hover:bg-pink-600/10 transition-colors duration-300" />
+                    <div className="h-8 w-8 bg-pink-500/10 rounded-lg flex items-center justify-center text-pink-400 shrink-0">
+                      <Calculator className="h-4 w-4" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="font-semibold text-white">Reconstitution Helper</h4>
+                      <p className="text-[10px] text-slate-500">Precision dosing calculators</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            </section>
 
-          {/* Tab 2: Orders List */}
-          {activeTab === 'orders' && (
-            <div className="space-y-6">
-              <TabHeader
-                title="Purchase & Invoice Requests"
-                description="Review order requests and update their status."
-                action={<span className="text-slate-400 text-xs font-mono">{filteredOrders.length} of {orders.length} shown</span>}
-              />
-
-              {/* Status filter chips */}
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {(['all', 'pending', 'invoice_sent', 'paid', 'shipped', 'cancelled'] as const).map(status => (
+            {/* Catalog Grid Section */}
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              {/* Category tabs */}
+              <div className="flex flex-wrap items-center justify-center gap-2 pb-8 border-b border-white/10">
+                {getCategories().map(cat => (
                   <button
-                    key={status}
-                    onClick={() => setOrderStatusFilter(status)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap border capitalize cursor-pointer transition-all ${
-                      orderStatusFilter === status
-                        ? 'bg-purple-500/20 border-purple-500 text-purple-300'
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
+                      selectedCategory === cat
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-lg shadow-purple-500/15'
                         : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
                     }`}
                   >
-                    {status === 'all' ? 'All' : status.replace('_', ' ')}
-                    {status !== 'all' && ` (${orders.filter(o => o.status === status).length})`}
+                    {cat}
                   </button>
                 ))}
               </div>
 
-              <div className="space-y-4">
-                {filteredOrders.map(order => (
-                  <div key={order.id} className={`${PANEL} p-5 space-y-4`}>
-                    {/* Header — status + total anchored top-right, where the eye lands first when scanning many orders */}
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between border-b border-slate-800 pb-3 gap-3">
-                      <div>
-                        <h3 className="font-display font-bold text-lg text-white">Order ID: #{order.id}</h3>
-                        <p className="text-slate-500 text-[11px] font-mono mt-0.5">
-                          Submitted: {new Date(order.created_at).toLocaleString('en-AU', { timeZone: 'Australia/Brisbane' })} (Brisbane time)
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-slate-400 text-xs uppercase tracking-wider">Update Status:</span>
-                          <select
-                            value={order.status}
-                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-                            className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+              {/* Loader */}
+              {loading ? (
+                <div className="text-center py-20 text-slate-400 text-sm">
+                  <div className="inline-block h-6 w-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p>Sterilizing laboratory inventory...</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pt-10">
+                  {getFilteredProducts().map(prod => (
+                    <div 
+                      key={prod.id} 
+                      className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden shadow-xl hover:border-purple-500/40 transition-all duration-300 flex flex-col relative group backdrop-blur-sm"
+                    >
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-purple-600/5 blur-3xl pointer-events-none group-hover:bg-purple-600/10 transition-colors duration-300" />
+                      {/* Image header */}
+                      <div className="relative aspect-[4/3] overflow-hidden bg-[#050510]">
+                        <img 
+                          src={prod.image_url} 
+                          alt={prod.name} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-all duration-500"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent opacity-80" />
+                        
+                        {/* Badges */}
+                        <div className="absolute top-4 left-4 flex flex-col gap-1.5">
+                          <span className="px-2.5 py-1 bg-[#050510]/80 backdrop-blur-md text-[10px] uppercase font-bold tracking-wider text-slate-300 border border-white/10 rounded-md">
+                            {prod.category}
+                          </span>
+                          {prod.is_best_selling && (
+                            <span className="px-2.5 py-1 bg-purple-600 text-[10px] uppercase font-bold tracking-wider text-white rounded-md">
+                              Best Selling
+                            </span>
+                          )}
+                          {prod.is_discounted && (
+                            <span className="px-2.5 py-1 bg-emerald-500 text-[10px] uppercase font-bold tracking-wider text-white rounded-md">
+                              Special Offer
+                            </span>
+                          )}
+                        </div>
+
+                        {prod.stock <= 5 && (
+                          <span className="absolute bottom-4 right-4 px-2 py-0.5 bg-rose-500/25 border border-rose-500/30 backdrop-blur-md rounded text-[10px] text-rose-300 font-bold uppercase tracking-wider">
+                            Low Stock
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Info body */}
+                      <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                        <div className="space-y-2">
+                          <h3 className="font-display font-bold text-lg text-white group-hover:text-purple-400 transition-colors">
+                            {prod.name}
+                          </h3>
+                          <p className="text-slate-400 text-xs leading-relaxed line-clamp-3">
+                            {prod.description}
+                          </p>
+                        </div>
+
+                        <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase tracking-wider text-slate-500">Research Fee</span>
+                            <div className="flex items-center gap-2">
+                              {prod.is_discounted && prod.discount_price ? (
+                                <>
+                                  <span className="font-mono text-lg font-bold text-emerald-400">${prod.discount_price.toFixed(2)}</span>
+                                  <span className="font-mono text-xs text-slate-500 line-through">${prod.price.toFixed(2)}</span>
+                                </>
+                              ) : (
+                                <span className="font-mono text-lg font-bold text-white">${prod.price.toFixed(2)}</span>
+                              )}
+                              <span className="text-[10px] text-slate-400 uppercase font-bold">AUD</span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => setSelectedProduct(prod)}
+                            className="py-2 px-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-purple-500/10 cursor-pointer"
                           >
-                            <option value="pending">Pending Request</option>
-                            <option value="invoice_sent">Invoice Issued</option>
-                            <option value="paid">Mark as Paid</option>
-                            <option value="shipped">Mark as Dispatched</option>
-                            <option value="cancelled">Cancelled</option>
+                            <span>Add to Cart</span>
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+          </div>
+        )}
+
+        {/* RECONSTITUTION CALCULATOR PAGE */}
+        {activePage === 'calculator' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 animate-fade-in space-y-8">
+            <div className="text-center space-y-2 max-w-xl mx-auto">
+              <h2 className="font-display font-extrabold text-3xl text-white uppercase tracking-wider">LABORATORY UTILITY ENGINE</h2>
+              <p className="text-slate-400 text-sm">Calculate peptide reconstitution parameters to determine syringe drawing lines cleanly and mathematically.</p>
+            </div>
+            <ReconstitutionCalculator />
+          </div>
+        )}
+
+        {/* PAYMENT INFO PAGE */}
+        {activePage === 'payment-info' && (
+          <div className="max-w-3xl mx-auto px-4 py-16 animate-fade-in space-y-8">
+            <div className="text-center space-y-2">
+              <span className="text-purple-400 font-bold uppercase text-xs tracking-widest">Step-By-Step Guidelines</span>
+              <h2 className="font-display font-extrabold text-3xl text-white uppercase tracking-wider">HOW TO PLACE YOUR ORDER REQUEST</h2>
+              <p className="text-slate-400 text-xs">Our system is manual and transparent. No online credit card charges will occur.</p>
+            </div>
+
+            {backendWakingUp && (
+              <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-3.5 text-xs text-blue-300 flex items-center gap-2.5">
+                <div className="h-3.5 w-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                <span>Reconnecting to server… the bank and PayPal details below may briefly show placeholder text until this finishes.</span>
+              </div>
+            )}
+
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 md:p-8 space-y-8 backdrop-blur-sm relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 blur-3xl pointer-events-none" />
+              <div className="flex gap-4 items-start relative z-10">
+                <div className="h-8 w-8 bg-purple-500/15 text-purple-400 font-display font-bold rounded-lg flex items-center justify-center shrink-0 border border-purple-500/25 shadow-lg">
+                  1
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display font-semibold text-white">Select Vials and Add to Cart</h3>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Browse our catalog, choose your quantities, and add your items to the cart.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start relative z-10">
+                <div className="h-8 w-8 bg-purple-500/15 text-purple-400 font-display font-bold rounded-lg flex items-center justify-center shrink-0 border border-purple-500/25 shadow-lg">
+                  2
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display font-semibold text-white">Enter Your Delivery Address & Select Your Payment Method</h3>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Choose your preferred payment option:
+                  </p>
+                  <ul className="list-disc pl-4 text-slate-500 text-xs space-y-1.5 pt-1.5">
+                    <li><strong className="text-slate-300">Bank Transfer:</strong> Manually complete your payment via bank transfer, using your order number as reference.</li>
+                    <li><strong className="text-slate-300">PayID:</strong> After entering your shipping details, transfer directly to our PayID using your banking app, with your order number as reference.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex gap-4 items-start relative z-10">
+                <div className="h-8 w-8 bg-purple-500/15 text-purple-400 font-display font-bold rounded-lg flex items-center justify-center shrink-0 border border-purple-500/25 shadow-lg">
+                  3
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-display font-semibold text-white">Immediate Dispatch</h3>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    We will package and dispatch your laboratory compounds within 24 hours. Express tracking information will be issued directly via email.
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-white/10 pt-6 relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col md:border-r border-white/10 md:pr-6 justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                      <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">Bank Transfer Details</h4>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">Secure local Queensland bank details for secure nationwide processing:</p>
+                    <div className="text-xs text-gray-300 space-y-1.5 font-mono bg-black/40 p-3 rounded-xl border border-white/5">
+                      <p><span className="text-slate-500">Account Name:</span> {paymentDetails?.account_name || 'Glow State'}</p>
+                      <p><span className="text-slate-500">Bank:</span> {paymentDetails?.bank_name || 'Commonwealth Bank'}</p>
+                      <p><span className="text-slate-500">BSB:</span> {paymentDetails?.bsb || '064 437'}</p>
+                      <p><span className="text-slate-500">Account No:</span> {paymentDetails?.account_number || '10013757'}</p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-3 leading-relaxed">
+                      Note: Your bank may say that Glow State does not match the account name, <strong className="text-slate-300">This is normal</strong>. Please continue with the transfer.
+                    </p>
+                  </div>
+                  <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
+                    Please use your order number as the reference and we will match your payment to your order.
+                  </p>
+                </div>
+                <div className="flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-2 h-2 rounded-full bg-purple-400"></div>
+                      <h4 className="text-sm font-bold text-purple-400 uppercase tracking-wider">PayID</h4>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">Instant real-time transfer straight to our PayID:</p>
+                    <div className="text-xs text-gray-300 space-y-1.5 font-mono bg-black/40 p-3 rounded-xl border border-white/5">
+                      <p><span className="text-slate-500">PayID:</span> {paymentDetails?.payid_number || '0491186505'}</p>
+                      <p><span className="text-slate-500">Name:</span> {paymentDetails?.payid_name || 'T Amos'}</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-yellow-400/90 italic mt-4 font-sans">
+                    Please use your order number as the reference and we will match your payment to your order.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* POLICIES PAGE */}
+        {activePage === 'policies' && (
+          <div className="max-w-3xl mx-auto px-4 py-16 animate-fade-in space-y-8">
+            <h2 className="font-display font-extrabold text-3xl text-white text-center uppercase tracking-wider">LABORATORY COMPLIANCE & REFUNDS POLICY</h2>
+            
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 md:p-8 space-y-6 text-sm text-slate-300 leading-relaxed backdrop-blur-sm relative overflow-hidden shadow-2xl">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 blur-3xl pointer-events-none" />
+              <section className="space-y-2 relative z-10">
+                <h3 className="font-display font-semibold text-white uppercase text-xs tracking-wider">1. Return and Refund Rules</h3>
+                <p className="text-xs text-slate-400">
+                  Because our materials are sterile lyophilized laboratory compounds, returns are strictly limited to damaged or incorrect vial shipments. Once a peptide vial has been opened or its outer seal is compromised, we cannot accept returns due to scientific safety standards.
+                </p>
+              </section>
+
+              <section className="space-y-2 relative z-10">
+                <h3 className="font-display font-semibold text-white uppercase text-xs tracking-wider">2. Damage During Dispatch</h3>
+                <p className="text-xs text-slate-400">
+                  Should a vial break or sustain integrity damage during Australia-wide transit, immediately snap a photograph and send it to our administration email: <strong className="text-purple-400">glowstatesupport@gmail.com</strong>. We will expedite a zero-cost replacement shipment immediately.
+                </p>
+              </section>
+
+              <section className="space-y-2 relative z-10">
+                <h3 className="font-display font-semibold text-white uppercase text-xs tracking-wider">3. Fast Dispatch and Delivery</h3>
+                <p className="text-xs text-slate-400">
+                  Orders are dispatched the next business day. Most parcels arrive within 1–3 business days, so you can enjoy your order sooner.
+                </p>
+              </section>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* 4. Footer Brand Area */}
+      <footer className="bg-[#03030d] border-t border-white/10 py-12 mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div className="space-y-3">
+            <Logo size={54} />
+            <p className="text-slate-500 text-[11px] leading-relaxed">
+              Premium scientific research peptide formulations. Based in Brisbane, Queensland, shipping nationwide.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase text-slate-300 tracking-wider mb-3">Service Navigation</h4>
+            <div className="flex flex-col gap-2 text-xs text-slate-500">
+              <button onClick={() => { setActivePage('shop'); setSelectedProduct(null); }} className="hover:text-white text-left cursor-pointer">Shop Catalog</button>
+              <button onClick={() => setActivePage('calculator')} className="hover:text-white text-left cursor-pointer">Dilution Calculator</button>
+              <button onClick={() => setActivePage('payment-info')} className="hover:text-white text-left cursor-pointer">Payment Guide</button>
+              <button onClick={() => setActivePage('policies')} className="hover:text-white text-left cursor-pointer">Policies</button>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase text-slate-300 tracking-wider mb-3">Contact Support</h4>
+            <div className="space-y-2 text-xs text-slate-500">
+              <p className="flex items-center gap-1.5 text-slate-400">
+                <Mail className="h-3.5 w-3.5 text-purple-400" />
+                <a href="mailto:glowstatesupport@gmail.com" className="hover:underline">glowstatesupport@gmail.com</a>
+              </p>
+              <p className="flex items-center gap-1.5 text-slate-400">
+                <svg viewBox="0 0 32 32" className="h-3.5 w-3.5 fill-purple-400" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M16.004 3C9.377 3 4 8.373 4 15c0 2.31.66 4.47 1.804 6.3L4 29l7.9-1.77A11.94 11.94 0 0 0 16.004 27C22.63 27 28 21.627 28 15S22.63 3 16.004 3Zm0 21.75a9.7 9.7 0 0 1-4.95-1.36l-.355-.21-4.69 1.05 1.02-4.57-.23-.37A9.73 9.73 0 0 1 5.25 15c0-5.93 4.82-10.75 10.754-10.75S26.75 9.07 26.75 15 21.94 24.75 16.004 24.75Zm5.42-7.36c-.297-.148-1.755-.866-2.028-.965-.272-.099-.47-.148-.668.148-.198.297-.767.965-.94 1.163-.173.198-.347.223-.644.075-.297-.148-1.253-.462-2.387-1.472-.883-.788-1.48-1.76-1.653-2.057-.173-.297-.018-.457.13-.605.134-.133.297-.347.446-.52.148-.174.198-.298.297-.496.099-.198.05-.372-.025-.52-.074-.148-.668-1.61-.916-2.204-.242-.579-.487-.5-.668-.51l-.569-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.478s1.065 2.874 1.213 3.072c.148.198 2.096 3.2 5.078 4.487.71.306 1.263.489 1.694.626.712.227 1.36.195 1.872.118.571-.085 1.755-.717 2.003-1.41.248-.694.248-1.288.173-1.41-.074-.124-.272-.198-.569-.347Z"/>
+                </svg>
+                <a href="https://wa.me/61491186505?text=Hello%2C%20I%20would%20like%20to%20make%20an%20inquiry%20about%20your%20products." target="_blank" rel="noopener noreferrer" className="hover:underline">WhatsApp</a>
+              </p>
+              <p>Brisbane, Australia</p>
+              <p className="text-[10px] text-slate-600">Australia-wide Tracked Shipping</p>
+              <p className="flex items-center gap-1.5 text-slate-400 pt-1">
+                <svg viewBox="0 0 448 512" className="h-3.5 w-3.5 fill-purple-400" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"/>
+                </svg>
+                <a href="https://www.tiktok.com/@glowstatepep" target="_blank" rel="noopener noreferrer" className="hover:underline">@glowstatepep</a>
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold uppercase text-slate-300 tracking-wider mb-3">Compliance Advisory</h4>
+            <p className="text-slate-600 text-[10px] leading-relaxed">
+              All listed peptides are intended exclusively for research laboratory trials. Practice absolute safety standards. Keep out of reach of children.
+            </p>
+          </div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-white/10 mt-8 pt-6 flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-600 gap-4">
+          <p>© 2026 Glow State Peptides. All Rights Reserved. Brisbane, QLD.</p>
+          <div className="flex gap-4">
+            <button onClick={() => setIsAdminOpen(true)} className="hover:text-white cursor-pointer">Admin System Access</button>
+          </div>
+        </div>
+      </footer>
+
+      {/* MODAL: Product Details & Order Request Trigger */}
+      {selectedProduct && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh]">
+            <button 
+              onClick={() => setSelectedProduct(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-slate-950/80 border border-slate-800 rounded-full text-slate-400 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            {/* Left side: Image */}
+            <div className="w-full md:w-1/2 aspect-[4/3] md:aspect-auto relative bg-slate-950">
+              <img 
+                src={selectedProduct.image_url} 
+                alt={selectedProduct.name}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-[#050510] to-transparent" />
+            </div>
+
+            {/* Right side: details */}
+            <div className="w-full md:w-1/2 p-6 md:p-8 overflow-y-auto space-y-6 relative">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-purple-600/5 blur-3xl pointer-events-none" />
+              <div className="space-y-1 relative z-10">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 py-1 px-2.5 rounded border border-white/10 inline-block">
+                  {selectedProduct.category}
+                </span>
+                <h2 className="font-display font-extrabold text-2xl text-white uppercase tracking-tight mt-2">{selectedProduct.name}</h2>
+              </div>
+
+              <p className="text-slate-300 text-xs leading-relaxed relative z-10">
+                {selectedProduct.description}
+              </p>
+
+              {/* Research Specification Data */}
+              <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-4 space-y-2 relative z-10">
+                <h4 className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compound Profile Data</h4>
+                <div className="grid grid-cols-2 gap-3 text-[11px]">
+                  <div className="text-slate-400 space-y-1.5">
+                    <p>Purity Grade: <strong className="text-white">99% Premium</strong></p>
+                    {selectedProduct.has_certificate && (
+                      <a
+                        href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
+                      >
+                        COA <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-slate-400">Vial Formulation: <strong className="text-white">Lyophilized Powder</strong></p>
+                  <p className="text-slate-400">Recommended Temp: <strong className="text-white">Refrigerate (2-8°C)</strong></p>
+                  <p className="text-slate-400">Reconstitution Sol: <strong className="text-white">Bacteriostatic Water</strong></p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-white/10 flex items-center justify-between relative z-10">
+                <div>
+                  <span className="text-[10px] uppercase text-slate-500 tracking-wider">Acquisition Fee</span>
+                  <div className="flex items-baseline gap-1.5">
+                    {selectedProduct.is_discounted && selectedProduct.discount_price ? (
+                      <>
+                        <span className="font-mono text-xl font-bold text-emerald-400">${selectedProduct.discount_price.toFixed(2)}</span>
+                        <span className="font-mono text-xs text-slate-500 line-through">${selectedProduct.price.toFixed(2)}</span>
+                      </>
+                    ) : (
+                      <span className="font-mono text-xl font-bold text-white">${selectedProduct.price.toFixed(2)}</span>
+                    )}
+                    <span className="text-[9px] text-slate-400 font-bold uppercase">AUD</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    addToCart(selectedProduct, 1);
+                    setSelectedProduct(null);
+                  }}
+                  className="py-3 px-5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-purple-500/15 cursor-pointer"
+                >
+                  <ShoppingBag className="h-4 w-4" />
+                  <span>Add to Cart</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DRAWER: Shopping Cart & Custom Checkout Options */}
+      {isCartOpen && (
+        <div className="fixed inset-0 bg-[#050510]/90 backdrop-blur-sm z-50 flex justify-end animate-fade-in" id="cart-drawer">
+          <div className="w-full max-w-md bg-[#08081a]/95 border-l border-white/10 flex flex-col justify-between h-full shadow-2xl relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/5 blur-3xl pointer-events-none" />
+            {/* Header */}
+            <div className="p-5 border-b border-white/10 flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5 text-purple-400" />
+                <h3 className="font-display font-bold text-lg text-white">Your Order Request</h3>
+              </div>
+              <button 
+                onClick={() => { setIsCartOpen(false); setCheckoutStep('cart'); }}
+                className="p-1.5 hover:bg-white/5 text-slate-400 hover:text-white rounded-lg transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content Switcher */}
+            <div className="flex-1 overflow-y-auto p-5 relative z-10">
+              {checkoutStep === 'cart' && (
+                <div className="space-y-5 h-full flex flex-col justify-between">
+                  <div className="space-y-4">
+                    {cart.map(item => {
+                      const price = item.product.is_discounted && item.product.discount_price 
+                        ? item.product.discount_price 
+                        : item.product.price;
+                      return (
+                        <div key={item.product.id} className="bg-black/40 border border-white/10 rounded-xl p-3 flex justify-between gap-4 text-xs items-center">
+                          <img 
+                            src={item.product.image_url} 
+                            alt={item.product.name} 
+                            className="h-12 w-12 rounded-lg object-cover border border-white/10 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-white truncate">{item.product.name}</h4>
+                            <p className="text-slate-400 font-mono mt-0.5">${price.toFixed(2)} AUD</p>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => updateCartQty(item.product.id, item.quantity - 1)}
+                              className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="font-mono text-white font-bold w-5 text-center">{item.quantity}</span>
+                            <button 
+                              onClick={() => updateCartQty(item.product.id, item.quantity + 1)}
+                              className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {cart.length === 0 && (
+                      <div className="text-center py-24 text-slate-500 space-y-3">
+                        <ShoppingBag className="h-12 w-12 mx-auto text-slate-700 animate-pulse" />
+                        <p className="text-xs">Your shopping cart is currently empty.</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {cart.length > 0 && (
+                    <div className="border-t border-white/10 pt-5 space-y-4">
+                      {appliedCoupon && (
+                        <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3.5 py-2.5">
+                          <span className="text-[11px] text-emerald-400 font-semibold">
+                            "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoupon}
+                            className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+
+                      {appliedCoupon && (
+                        <div className="flex justify-between items-center text-[11px] text-emerald-400">
+                          <span>Discount</span>
+                          <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center font-mono font-bold text-white text-base">
+                        <span>ESTIMATED TOTAL:</span>
+                        <span className="text-purple-400">${getDiscountedSubtotal().toFixed(2)} AUD</span>
+                      </div>
+                      {getCartTotal() > FREE_SHIPPING_THRESHOLD ? (
+                        <p className="text-[10px] text-emerald-400 font-semibold -mt-2">Free express shipping unlocked! 🎉</p>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 -mt-2">
+                          Free Shipping: Enjoy free shipping on all orders over ${FREE_SHIPPING_THRESHOLD}
+                        </p>
+                      )}
+                      
+                      <div className="bg-black/40 border border-white/10 rounded-xl p-3 text-[10px] text-slate-400 leading-relaxed flex gap-2">
+                        <UserCheck className="h-4 w-4 text-purple-400 shrink-0" />
+                        <span>
+                         $10 Express shipping added at checkout or free over $160
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          // TikTok Pixel — InitiateCheckout. Fires only when the
+                          // customer actually clicks through from cart review to
+                          // the shipping/payment details step, using the real
+                          // cart contents and the actual order total at that moment.
+                          trackTikTokEvent('InitiateCheckout', {
+                            value: getOrderTotal(),
+                            currency: 'AUD',
+                            content_type: 'product',
+                            contents: cart.map(item => ({
+                              content_id: String(item.product.id),
+                              content_name: item.product.name,
+                              content_category: item.product.category,
+                              quantity: item.quantity,
+                              price: item.product.is_discounted && item.product.discount_price
+                                ? item.product.discount_price
+                                : item.product.price,
+                            })),
+                          });
+                          setCheckoutStep('details');
+                        }}
+                        className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-500/10 cursor-pointer"
+                      >
+                        <span>Checkout</span>
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {checkoutStep === 'details' && (
+                <form onSubmit={handlePlaceOrderRequest} className="space-y-5 text-xs text-slate-300">
+                  <div className="space-y-1">
+                    <h4 className="font-display font-semibold text-white uppercase text-xs tracking-wider">Select Payment Route</h4>
+                    <p className="text-slate-500 text-[10px]">Verify how you want to complete payment after validation.</p>
+                  </div>
+
+                  {backendWakingUp && (
+                    <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-3 text-[11px] text-blue-300 flex items-center gap-2">
+                      <div className="h-3 w-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                      <span>Reconnecting to server… payment details below may briefly show placeholder text.</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('bank_transfer')}
+                      className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                        paymentMethod === 'bank_transfer'
+                          ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
+                          : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="font-semibold text-xs">Bank Transfer</span>
+                      <span className="text-[9px] font-normal">Manually transfer with order reference</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('payid')}
+                      className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                        paymentMethod === 'payid'
+                          ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
+                          : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="font-semibold text-xs">PayID</span>
+                      <span className="text-[9px] font-normal">Instant payments via PayID (Real-time)</span>
+                    </button>
+
+                    {paypalEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('paypal_invoice')}
+                      className={`p-3.5 rounded-xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                        paymentMethod === 'paypal_invoice'
+                          ? 'bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-purple-500 text-purple-300 shadow-md shadow-purple-500/5'
+                          : 'bg-black/40 border-white/10 text-slate-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="font-semibold text-xs">PayPal</span>
+                      <span className="text-[9px] font-normal">Pay with PayPal</span>
+                      <span className="text-[9px] font-normal">Express payment with Apple Pay available</span>
+                    </button>
+                    )}
+                  </div>
+
+                  {/* Payment instructions warning */}
+                  {paymentMethod === 'bank_transfer' ? (
+                    <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-blue-300">Bank Transfer Account Details:</h5>
+                      <p><strong>Account Name:</strong> {paymentDetails?.account_name || 'Glow State'}</p>
+                      <p><strong>Bank:</strong> {paymentDetails?.bank_name || 'Commonwealth Bank'}</p>
+                      <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
+                      <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
+                      <p className="text-[10px] text-slate-400 pt-1 leading-relaxed">
+                        Note: Your bank may say that Glow State does not match the account name, <strong className="text-slate-300">This is normal</strong>. Please continue with the transfer.
+                      </p>
+                      <p className="text-[11px] text-yellow-400 font-semibold pt-1.5">
+                        Please use your order number as the reference and we will match your payment to your order.
+                      </p>
+                    </div>
+                  ) : paymentMethod === 'payid' ? (
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-1 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-purple-300">Pay with PayID</h5>
+                      <p>Once you have completed your delivery details, you will be taken to PayID information.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-xs space-y-2 text-slate-300 leading-relaxed">
+                      <h5 className="font-bold text-purple-300">Pay with PayPal</h5>
+                      <p className="text-[10px] text-slate-400">
+                        A 3% PayPal processing fee is automatically added. Complete shipping details, then you
+                        will be directed to the payment method.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border-t border-white/10 pt-4 space-y-4">
+                    <h4 className="font-display font-semibold text-white uppercase text-xs tracking-wider">Research Delivery Address</h4>
+                    
+                    <div className="space-y-3.5">
+                      <div>
+                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Full Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={shippingDetails.name}
+                          onChange={(e) => setShippingDetails({ ...shippingDetails, name: e.target.value })}
+                          placeholder="John Doe"
+                          className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Email Address</label>
+                        <input
+                          type="email"
+                          required
+                          value={shippingDetails.email}
+                          onChange={(e) => setShippingDetails({ ...shippingDetails, email: e.target.value })}
+                          placeholder="john.doe@gmail.com"
+                          className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Shipping Address</label>
+                        <input
+                          type="text"
+                          required
+                          value={shippingDetails.address}
+                          onChange={(e) => setShippingDetails({ ...shippingDetails, address: e.target.value })}
+                          placeholder="123 Queen Street, Brisbane"
+                          className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Postcode</label>
+                          <input
+                            type="text"
+                            required
+                            value={shippingDetails.postcode}
+                            onChange={(e) => setShippingDetails({ ...shippingDetails, postcode: e.target.value })}
+                            placeholder="4000"
+                            className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">State</label>
+                          <select
+                            required
+                            value={shippingDetails.state}
+                            onChange={(e) => setShippingDetails({ ...shippingDetails, state: e.target.value })}
+                            className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-bold appearance-none"
+                          >
+                            <option value="" disabled>Select...</option>
+                            <option value="NSW">NSW</option>
+                            <option value="VIC">VIC</option>
+                            <option value="QLD">QLD</option>
+                            <option value="WA">WA</option>
+                            <option value="SA">SA</option>
+                            <option value="TAS">TAS</option>
+                            <option value="ACT">ACT</option>
+                            <option value="NT">NT</option>
                           </select>
                         </div>
                       </div>
-
-                      <div className="text-left sm:text-right">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block ${getStatusBadgeClass(order.status)}`}>
-                          {order.status.replace('_', ' ')}
-                        </span>
-                        <p className="font-mono font-bold text-white text-lg mt-1.5">${Number(order.total_amount).toFixed(2)} AUD</p>
-                      </div>
-                    </div>
-
-                    {/* Customer info & items */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-                      <div className="space-y-2">
-                        <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Customer Details</h4>
-                        <p className="text-white"><strong className="text-slate-400">Name:</strong> {order.customer_name}</p>
-                        <p className="text-white"><strong className="text-slate-400">Email:</strong> {order.customer_email}</p>
-                        <p className="text-white"><strong className="text-slate-400">Address:</strong> {order.customer_address}</p>
-                        <p className="text-white"><strong className="text-slate-400">Chosen Flow:</strong> <span className="bg-purple-600/10 text-purple-300 font-bold px-2 py-0.5 rounded border border-purple-500/20 text-xs uppercase">{order.payment_method.replace('_', ' ')}</span></p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Requested Products</h4>
-                        <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 divide-y divide-slate-800/60 max-h-40 overflow-y-auto">
-                          {order.items?.map((item, idx) => (
-                            <div key={idx} className="py-2 flex justify-between text-xs gap-3">
-                              <span className="text-slate-300 font-medium">{item.product_name} <strong className="text-purple-400 font-bold">x{item.quantity}</strong></span>
-                              <span className="text-white font-mono font-semibold">${(Number(item.price) * item.quantity).toFixed(2)}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex justify-between items-center font-mono font-bold text-white text-base pt-1 px-1">
-                          <span>TOTAL REQUEST:</span>
-                          <span className="text-purple-400">${Number(order.total_amount).toFixed(2)} AUD</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
-                ))}
 
-                {filteredOrders.length === 0 && (
-                  <p className="text-slate-500 text-xs text-center py-20">
-                    {orders.length === 0 ? 'No orders logged yet.' : 'No orders match this filter.'}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab 3: Products Catalog */}
-          {activeTab === 'products' && (
-            <div className="space-y-6">
-              <TabHeader
-                title="Active Laboratories Inventory"
-                description="Manage the live product catalog shown on the storefront."
-                action={
-                  <button
-                    onClick={openAddProduct}
-                    className="flex items-center gap-2 py-2 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:opacity-95 transition-all"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>Register Peptide</span>
-                  </button>
-                }
-              />
-
-              <div className={`${PANEL} overflow-hidden`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950 border-b border-slate-800 text-xs text-slate-400 uppercase font-semibold tracking-wider">
-                        <th className="p-4">Thumbnail</th>
-                        <th className="p-4">Peptide Name</th>
-                        <th className="p-4">Category</th>
-                        <th className="p-4">Base Price</th>
-                        <th className="p-4">Discount status</th>
-                        <th className="p-4">Stock</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 text-xs text-slate-300">
-                      {products.map(prod => (
-                        <tr key={prod.id} className="hover:bg-slate-800/40">
-                          <td className="p-4">
-                            <img
-                              src={prod.image_url}
-                              alt={prod.name}
-                              className="h-10 w-10 object-cover rounded-lg border border-slate-700"
-                              referrerPolicy="no-referrer"
-                            />
-                          </td>
-                          <td className="p-4 font-semibold text-white max-w-xs">{prod.name}</td>
-                          <td className="p-4">{prod.category}</td>
-                          <td className="p-4 font-mono font-medium">${Number(prod.price).toFixed(2)}</td>
-                          <td className="p-4">
-                            {prod.is_discounted && prod.discount_price !== null && prod.discount_price !== undefined ? (
-                              <span className="text-emerald-400 font-mono font-bold">${Number(prod.discount_price).toFixed(2)} <span className="text-[9px] uppercase font-bold text-slate-500">(Active)</span></span>
-                            ) : (
-                              <span className="text-slate-500">None</span>
-                            )}
-                          </td>
-                          <td className="p-4 font-mono">{prod.stock} Units</td>
-                          <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => openEditProduct(prod)}
-                                className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all"
-                                title="Edit Peptide Profile"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => deleteProduct(prod.id)}
-                                className="p-2 text-slate-400 hover:text-rose-400 rounded-lg bg-slate-800 transition-all"
-                                title="Remove Peptide"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab: Discount Codes (Coupons) — additive */}
-          {activeTab === 'coupons' && (
-            <div className="space-y-6">
-              <TabHeader
-                title="Discount Codes"
-                description="Create and manage coupon codes. Discounts apply once to the customer's overall order total (or, if scoped to specific products, to just that portion of the total) — never per product."
-                action={
-                  <button
-                    onClick={openAddCoupon}
-                    className="flex items-center gap-2 py-2 px-4 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-xs font-semibold hover:opacity-95 transition-all"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>New Discount Code</span>
-                  </button>
-                }
-              />
-
-              {couponNotice && (
-                <div className={`flex items-start gap-2 py-2.5 px-3 rounded-xl border text-[11px] ${
-                  couponNotice.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                  : couponNotice.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                  : 'bg-blue-500/10 border-blue-500/20 text-blue-300'
-                }`}>
-                  {couponNotice.type === 'success' ? <Check className="h-3.5 w-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />}
-                  <span className="flex-1">{couponNotice.text}</span>
-                  <button onClick={() => setCouponNotice(null)} className="text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" /></button>
-                </div>
-              )}
-
-              <div className={`${PANEL} overflow-hidden`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-950 border-b border-slate-800 text-xs text-slate-400 uppercase font-semibold tracking-wider">
-                        <th className="p-4">Code</th>
-                        <th className="p-4">Discount</th>
-                        <th className="p-4">Applies To</th>
-                        <th className="p-4">Window</th>
-                        <th className="p-4">Usage</th>
-                        <th className="p-4">Status</th>
-                        <th className="p-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 text-xs text-slate-300">
-                      {coupons.length === 0 && (
-                        <tr>
-                          <td colSpan={7} className="p-6 text-center text-slate-500">
-                            No discount codes yet. Click "New Discount Code" to create one.
-                          </td>
-                        </tr>
-                      )}
-                      {coupons.map(coupon => (
-                        <tr key={coupon.id} className="hover:bg-slate-800/40">
-                          <td className="p-4">
-                            <div className="font-mono font-bold text-white">{coupon.code}</div>
-                            {coupon.name && <div className="text-slate-500 text-[10px] mt-0.5">{coupon.name}</div>}
-                          </td>
-                          <td className="p-4 font-mono font-semibold text-emerald-400">{Number(coupon.discount_percent)}%</td>
-                          <td className="p-4">
-                            {coupon.applies_to_all ? (
-                              <span className="text-slate-300">All products</span>
-                            ) : (
-                              <span className="text-slate-300">{(coupon.product_ids || []).length} selected product{(coupon.product_ids || []).length === 1 ? '' : 's'}</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-[11px] text-slate-400">
-                            <div>From {coupon.starts_at ? new Date(coupon.starts_at).toLocaleString() : '—'}</div>
-                            <div>To {new Date(coupon.expires_at).toLocaleString()}</div>
-                          </td>
-                          <td className="p-4 font-mono">
-                            {coupon.used_count}{coupon.max_uses !== null ? ` / ${coupon.max_uses}` : ''} used
-                            {coupon.max_uses !== null && (
-                              <div className="text-slate-500 text-[10px] mt-0.5">{coupon.remaining_uses} remaining</div>
-                            )}
-                            {coupon.max_uses === null && (
-                              <div className="text-slate-500 text-[10px] mt-0.5">Unlimited</div>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-2 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider ${COUPON_STATUS_STYLE[coupon.status]}`}>
-                              {COUPON_STATUS_LABEL[coupon.status]}
+                  <div className="border-t border-white/10 pt-4 space-y-2">
+                    <h4 className="font-display font-semibold text-white uppercase text-xs tracking-wider">Order Summary</h4>
+                    <div className="bg-black/40 border border-white/10 rounded-xl p-3.5 space-y-1.5">
+                      {/* Discount code — applies once to the order total, never per product */}
+                      <div className="pb-2.5 mb-1.5 border-b border-white/10 space-y-1.5">
+                        {appliedCoupon ? (
+                          <div className="flex items-center justify-between bg-emerald-950/30 border border-emerald-700/40 rounded-xl px-3 py-2">
+                            <span className="text-[11px] text-emerald-400 font-semibold">
+                              "{appliedCoupon.code}" applied — {appliedCoupon.discount_percent}% off
                             </span>
-                            {coupon.notification && coupon.notification.sent > 0 && (
-                              <div className="text-slate-500 text-[10px] mt-1.5">Emailed to {coupon.notification.sent} returning customer{coupon.notification.sent === 1 ? '' : 's'}</div>
-                            )}
-                          </td>
-                          <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => sendCouponToReturning(coupon)}
-                                disabled={notifyBusy || !(coupon.status === 'active' || coupon.status === 'scheduled')}
-                                className="p-2 text-purple-300 hover:text-white rounded-lg bg-slate-800 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                title="Send Code to Returning Customers"
-                              >
-                                <Mail className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => sendCouponTest(coupon)}
-                                disabled={notifyBusy}
-                                className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all disabled:opacity-40"
-                                title="Send a test email of this code to one address"
-                              >
-                                <Send className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => openEditCoupon(coupon)}
-                                className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all"
-                                title="Edit Discount Code"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => toggleCouponActive(coupon)}
-                                className="p-2 text-slate-400 hover:text-white rounded-lg bg-slate-800 transition-all"
-                                title={coupon.is_active ? 'Stop Code' : 'Reactivate Code'}
-                              >
-                                {coupon.is_active ? <Ban className="h-3.5 w-3.5" /> : <PlayCircle className="h-3.5 w-3.5" />}
-                              </button>
-                              <button
-                                onClick={() => deleteCoupon(coupon)}
-                                className="p-2 text-slate-400 hover:text-rose-400 rounded-lg bg-slate-800 transition-all"
-                                title="Delete Discount Code"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab 4: Activity Logs */}
-          {activeTab === 'activities' && (
-            <div className="space-y-6">
-              <TabHeader title="Audit Logs & Events" description="A chronological record of admin actions and system notifications." />
-
-              <div className={`${PANEL} p-5 divide-y divide-slate-800 max-h-[600px] overflow-y-auto`}>
-                {activities.map(act => (
-                  <div key={act.id} className="py-3.5 first:pt-0 last:pb-0 flex justify-between items-start text-xs gap-4">
-                    <div className="space-y-1">
-                      <p className="text-slate-200">{act.description}</p>
-                      <div className="flex gap-2 items-center">
-                        <span className="bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-mono font-bold text-[9px] uppercase tracking-wider">
-                          {act.type.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-slate-500 font-mono text-[10px] shrink-0">{new Date(act.created_at).toLocaleString()}</span>
-                  </div>
-                ))}
-                {activities.length === 0 && (
-                  <p className="text-slate-500 text-xs text-center py-20">No system activities recorded.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Tab 5: Email Simulator */}
-          {activeTab === 'emails' && (
-            <div className="space-y-6">
-              <TabHeader
-                title="Automated Email Log"
-                description="Review exactly what automated order emails were sent (or failed) to glowstatesupport@gmail.com and customer mailboxes."
-              />
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* List */}
-                <div className={`${PANEL} md:col-span-1 p-4 h-[500px] overflow-y-auto space-y-2.5`}>
-                  <h3 className="text-slate-400 text-[11px] font-bold uppercase tracking-wider mb-2">Dispatched Outbox</h3>
-                  {emails.map(mail => (
-                    <button
-                      key={mail.id}
-                      onClick={() => setSelectedEmail(mail)}
-                      className={`w-full text-left p-3 rounded-xl border text-xs transition-all flex flex-col gap-1 ${
-                        selectedEmail?.id === mail.id
-                          ? 'bg-purple-600/15 border-purple-500 text-purple-300 font-semibold'
-                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900 hover:text-white'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center w-full">
-                        <span className="font-semibold text-slate-300">To: {mail.to}</span>
-                        <span className="text-[9px] font-mono text-slate-500">{new Date(mail.created_at).toLocaleTimeString()}</span>
-                      </div>
-                      <span className="font-medium text-white truncate w-full">{mail.subject}</span>
-                      {mail.sent === true && (
-                        <span className="self-start text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400">✓ SENT</span>
-                      )}
-                      {mail.sent === false && (
-                        <span className="self-start text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-red-950 text-red-400">✗ FAILED</span>
-                      )}
-                    </button>
-                  ))}
-                  {emails.length === 0 && (
-                    <p className="text-slate-500 text-xs text-center py-20">No emails dispatched yet. Submit an order request to trigger simulated emails.</p>
-                  )}
-                </div>
-
-                {/* Display */}
-                <div className={`${PANEL} md:col-span-2 p-6 h-[500px] flex flex-col`}>
-                  {selectedEmail ? (
-                    <div className="flex flex-col h-full">
-                      <div className="border-b border-slate-800 pb-3 mb-4 space-y-1">
-                        <h3 className="text-white font-semibold text-sm">Subject: {selectedEmail.subject}</h3>
-                        <p className="text-xs text-slate-400">Recipient Address: <strong className="text-purple-400 font-bold">{selectedEmail.to}</strong></p>
-                        <p className="text-[10px] text-slate-500 font-mono">Dispatched Timestamp: {new Date(selectedEmail.created_at).toLocaleString()}</p>
-                      </div>
-                      {selectedEmail.sent === true && (
-                        <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-800 text-emerald-300 text-xs font-semibold">
-                          ✓ Sent successfully via SMTP.
-                        </div>
-                      )}
-                      {selectedEmail.sent === false && (
-                        <div className="mb-4 p-3 rounded-xl bg-red-950/60 border border-red-800 text-red-300 text-xs space-y-1">
-                          <p className="font-bold">✗ Send failed</p>
-                          <p className="font-mono text-[11px] break-words">{selectedEmail.error || 'Unknown error'}</p>
-                        </div>
-                      )}
-                      <div className="flex-1 bg-white rounded-xl overflow-y-auto p-4 border border-slate-700 shadow-inner">
-                        {selectedEmail.html ? (
-                          <div dangerouslySetInnerHTML={{ __html: selectedEmail.html }} />
+                            <button
+                              type="button"
+                              onClick={handleRemoveCoupon}
+                              className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
                         ) : (
-                          <p className="text-slate-400 text-xs italic">No HTML preview stored for this log entry — the templated email was rendered fresh at send time and isn't saved here.</p>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={couponInput}
+                              onChange={(e) => { setCouponInput(e.target.value); setCouponError(''); }}
+                              placeholder="Discount code"
+                              className="flex-1 bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-purple-500 uppercase placeholder:normal-case"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleApplyCoupon}
+                              disabled={couponChecking || !couponInput.trim()}
+                              className="px-4 py-2 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed border border-white/10 text-white text-xs font-semibold rounded-xl transition-all cursor-pointer shrink-0"
+                            >
+                              {couponChecking ? '...' : 'Apply'}
+                            </button>
+                          </div>
+                        )}
+                        {couponError && (
+                          <p className="text-[10px] text-red-400">{couponError}</p>
                         )}
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-slate-500 text-xs gap-2">
-                      <Mail className="h-10 w-10 text-slate-600 animate-pulse" />
-                      <p>Select a simulated email from the sidebar to inspect its styling and transaction details.</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Tab 6: Website Cleaning / Archive */}
-          {activeTab === 'archive' && (
-            <div className="space-y-6">
-              <TabHeader
-                title="Website Cleaning / Archive"
-                description="Move old data out of the live database into a downloadable snapshot to free up storage."
-              />
-
-              {/* Create archive form */}
-              <form onSubmit={createArchive} className={`${PANEL} p-6 space-y-4`}>
-                {archiveMessage && (
-                  <div className={`rounded-xl p-3 flex items-center gap-2.5 text-xs ${
-                    archiveMessage.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                  }`}>
-                    {archiveMessage.type === 'success' ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-                    <span>{archiveMessage.text}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Data to Archive</label>
-                    <select
-                      value={archiveCategory}
-                      onChange={(e) => setArchiveCategory(e.target.value as 'orders' | 'activities')}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500"
-                    >
-                      <option value="orders">Orders (Paid / Shipped / Cancelled only)</option>
-                      <option value="activities">Notifications, Emails &amp; Activity Logs</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Archive Everything Before</label>
-                    <input
-                      type="date"
-                      required
-                      value={archiveBeforeDate}
-                      onChange={(e) => setArchiveBeforeDate(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-                    />
-                  </div>
-                </div>
-
-                <p className="text-slate-500 text-[11px]">
-                  {archiveCategory === 'orders'
-                    ? 'Only orders already marked Paid, Shipped, or Cancelled are eligible — Pending and Invoice Sent orders are never archived, so nothing awaiting action can disappear.'
-                    : 'Covers every entry in the Activity Logs tab, including logged notification/email sends and admin actions.'}
-                </p>
-
-                <button
-                  type="submit"
-                  disabled={archiveBusy}
-                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <ArchiveIcon className="h-4 w-4" />
-                  {archiveBusy ? 'Archiving…' : 'Archive Old Data'}
-                </button>
-              </form>
-
-              {/* Existing archives list */}
-              <div className={`${PANEL} p-5 divide-y divide-slate-800`}>
-                <h3 className="text-slate-400 text-[11px] font-bold uppercase tracking-wider pb-3">Stored Archives</h3>
-                {archives.map(archive => (
-                  <div key={archive.id} className="py-3.5 first:pt-0 last:pb-0 flex flex-wrap justify-between items-center gap-3 text-xs">
-                    <div className="space-y-1">
-                      <div className="flex gap-2 items-center">
-                        <span className="bg-purple-950 text-purple-400 px-2 py-0.5 rounded font-mono font-bold text-[9px] uppercase tracking-wider">
-                          {archive.category_display}
-                        </span>
-                        <span className="text-slate-200 font-semibold">{archive.item_count} record(s)</span>
+                      <div className="flex justify-between text-slate-400">
+                        <span>Subtotal</span>
+                        <span className="font-mono">${getCartTotal().toFixed(2)} AUD</span>
                       </div>
-                      <p className="text-slate-500 font-mono text-[10px]">
-                        Created before {archive.cutoff_date ? new Date(archive.cutoff_date).toLocaleDateString() : '—'} · Archived on {new Date(archive.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => downloadArchive(archive)}
-                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-lg text-[11px] font-semibold transition-all border border-white/10 cursor-pointer"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download
-                      </button>
-                      <button
-                        onClick={() => restoreArchive(archive)}
-                        disabled={restoringArchiveId === archive.id}
-                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-emerald-950/40 disabled:opacity-50 text-slate-300 hover:text-emerald-400 rounded-lg text-[11px] font-semibold transition-all border border-white/10 hover:border-emerald-900/30 cursor-pointer"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                        {restoringArchiveId === archive.id ? 'Unarchiving…' : 'Unarchive'}
-                      </button>
-                      <button
-                        onClick={() => deleteArchive(archive)}
-                        className="flex items-center gap-1.5 py-1.5 px-3 bg-white/5 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 rounded-lg text-[11px] font-semibold transition-all border border-white/10 hover:border-rose-900/30 cursor-pointer"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
+                      {appliedCoupon && (
+                        <div className="flex justify-between text-emerald-400">
+                          <span>Discount ({appliedCoupon.code})</span>
+                          <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-slate-400">
+                        <span>Shipping</span>
+                        <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
+                      </div>
+                      {paymentMethod === 'paypal_invoice' && (
+                        <div className="flex justify-between text-yellow-400">
+                          <span>PayPal Fee (3%)</span>
+                          <span className="font-mono">${getPaypalFee().toFixed(2)} AUD</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-mono font-bold text-white text-sm pt-1.5 border-t border-white/10">
+                        <span>Total</span>
+                        <span className="text-purple-400">${getOrderTotal().toFixed(2)} AUD</span>
+                      </div>
                     </div>
                   </div>
-                ))}
-                {archives.length === 0 && (
-                  <p className="text-slate-500 text-xs text-center py-20">No archives yet. Use the form above to archive old orders or logs.</p>
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* Tab: Account Security / Change Password */}
-          {activeTab === 'settings' && (
-            <div className="space-y-6 max-w-lg">
-              <div className={`${PANEL} p-6 space-y-4`}>
-                <div>
-                  <h3 className="text-white font-semibold text-sm">PayPal Payments</h3>
-                  <p className="text-slate-400 text-xs mt-1 leading-relaxed">
-                    Having a problem with PayPal? Turn it OFF to hide it from the checkout so customers only see Bank Transfer and PayID.
-                    Turn it back ON once it's fixed.
-                  </p>
-                </div>
-                {paypalMessage && (
-                  <div className={`rounded-xl p-3 text-xs ${
-                    paypalMessage.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                  }`}>
-                    {paypalMessage.text}
+                  <div className="pt-4 border-t border-white/10 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCheckoutStep('cart')}
+                      className="py-3 px-4 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl font-semibold transition-all shrink-0 cursor-pointer"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isPlacingOrder}
+                      className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
+                    </button>
                   </div>
-                )}
-                <div className="flex items-center justify-between gap-4">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${paypalEnabled ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {paypalEnabled === null ? 'Loading…' : paypalEnabled ? 'PayPal is ON (visible)' : 'PayPal is OFF (hidden)'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleTogglePaypal}
-                    disabled={paypalEnabled === null || paypalBusy}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 ${
-                      paypalEnabled
-                        ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
-                  >
-                    {paypalBusy ? 'Saving…' : paypalEnabled ? 'Hide PayPal' : 'Show PayPal'}
-                  </button>
-                </div>
-              </div>
-
-              <TabHeader
-                title="Account Security"
-                description="Change your admin password. This site has no backend server, so this password is only ever stored (hashed) in this browser's local storage — it is never shown on any public page."
-              />
-
-              <form onSubmit={handleChangePassword} className={`${PANEL} p-6 space-y-4`}>
-                {pwMessage && (
-                  <div className={`rounded-xl p-3 flex items-center gap-2.5 text-xs ${
-                    pwMessage.type === 'success'
-                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
-                  }`}>
-                    {pwMessage.type === 'success' ? <Check className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-                    <span>{pwMessage.text}</span>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Current Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwForm.currentPassword}
-                    onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })}
-                    placeholder="••••••••"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwForm.newPassword}
-                    onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
-                    placeholder="At least 8 characters"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wider">Confirm New Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={pwForm.confirmPassword}
-                    onChange={(e) => setPwForm({ ...pwForm, confirmPassword: e.target.value })}
-                    placeholder="Repeat new password"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={pwSubmitting}
-                  className="w-full py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 disabled:opacity-50 text-white font-medium rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <KeyRound className="h-4 w-4" />
-                  {pwSubmitting ? 'Updating…' : 'Update Password'}
-                </button>
-              </form>
-            </div>
-          )}
-        </main>
-      </div>
-
-      {/* MODAL: Add/Edit Product */}
-      {showProductModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-              <h3 className="font-display font-bold text-lg text-white">
-                {editingProduct ? 'EDIT PEPTIDE RECORD' : 'REGISTER NEW PEPTIDE'}
-              </h3>
-              <button onClick={() => setShowProductModal(false)} className="text-slate-400 hover:text-white">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={saveProduct} className="space-y-4 text-xs text-slate-300">
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Peptide Compound Name</label>
-                <input
-                  type="text"
-                  required
-                  value={prodForm.name}
-                  onChange={(e) => setProdForm({ ...prodForm, name: e.target.value })}
-                  placeholder="e.g. CJC-1295 (5mg vial)"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Laboratory Description</label>
-                <textarea
-                  required
-                  value={prodForm.description}
-                  onChange={(e) => setProdForm({ ...prodForm, description: e.target.value })}
-                  rows={3}
-                  placeholder="Describe its research parameters, molecular structure details, or recovery acceleration factors..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Category Classification</label>
-                  <select
-                    value={prodForm.category}
-                    onChange={(e) => setProdForm({ ...prodForm, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="Healing & Recovery">Healing & Recovery</option>
-                    <option value="Anti-Aging & Wellness">Anti-Aging & Wellness</option>
-                    <option value="Aesthetics">Aesthetics</option>
-                    <option value="Metabolic Support">Metabolic Support</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Vial Stock Units</label>
-                  <input
-                    type="number"
-                    required
-                    value={prodForm.stock}
-                    onChange={(e) => setProdForm({ ...prodForm, stock: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Peptide Photo URL</label>
-                <input
-                  type="text"
-                  required
-                  value={prodForm.image_url}
-                  onChange={(e) => setProdForm({ ...prodForm, image_url: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-mono"
-                />
-              </div>
-
-              {editingProduct && (
-                <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-3 space-y-2">
-                  <label className="block text-slate-400 font-semibold uppercase tracking-wider">
-                    Certificate of Analysis (COA)
-                  </label>
-
-                  {editingProduct.has_certificate ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <a
-                        href={`${API_BASE_URL}/products/${editingProduct.id}/certificate/`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[11px] font-semibold"
-                      >
-                        View Current Certificate
-                      </a>
-                      <label className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
-                        {certUploading ? 'Uploading…' : 'Replace'}
-                        <input
-                          type="file"
-                          accept="application/pdf,image/*"
-                          className="hidden"
-                          disabled={certUploading}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) uploadCertificate(file);
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={deleteCertificate}
-                        disabled={certUploading}
-                        className="py-2 px-3 bg-slate-800 hover:bg-rose-900/60 text-rose-400 rounded-lg text-[11px] font-semibold"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="inline-block py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
-                      {certUploading ? 'Uploading…' : 'Upload Certificate'}
-                      <input
-                        type="file"
-                        accept="application/pdf,image/*"
-                        className="hidden"
-                        disabled={certUploading}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) uploadCertificate(file);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                  )}
-
-                  {certError && <p className="text-rose-400 text-[11px]">{certError}</p>}
-                  <p className="text-slate-500 text-[10px]">
-                    Accepted: PDF or image. Shown as a "View Certificate" button on the product page once uploaded.
-                  </p>
-                </div>
+                </form>
               )}
 
-              <div className="grid grid-cols-2 gap-4 border-t border-slate-800/80 pt-4">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Base Price ($ AUD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={prodForm.price}
-                    onChange={(e) => setProdForm({ ...prodForm, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Is Discounted?</label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      type="checkbox"
-                      id="is_discounted"
-                      checked={prodForm.is_discounted}
-                      onChange={(e) => setProdForm({ ...prodForm, is_discounted: e.target.checked })}
-                      className="accent-purple-500 h-4 w-4"
-                    />
-                    <label htmlFor="is_discounted" className="text-slate-300 font-medium">Activate Sale Price</label>
+              {checkoutStep === 'success' && placedOrder && (
+                <div className="space-y-6 text-xs text-slate-300 leading-relaxed text-center">
+                  <div className="h-12 w-12 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/20">
+                    <Check className="h-6 w-6" />
                   </div>
-                </div>
-              </div>
 
-              {prodForm.is_discounted && (
-                <div className="bg-purple-950/20 border border-purple-800/20 rounded-xl p-3">
-                  <label className="block text-purple-300 font-semibold mb-1 uppercase tracking-wider">Discount Sale Price ($ AUD)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required={prodForm.is_discounted}
-                    value={prodForm.discount_price}
-                    onChange={(e) => setProdForm({ ...prodForm, discount_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-purple-800/40 rounded-xl px-3 py-2 text-emerald-400 focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <input
-                  type="checkbox"
-                  id="is_best_selling"
-                  checked={prodForm.is_best_selling}
-                  onChange={(e) => setProdForm({ ...prodForm, is_best_selling: e.target.checked })}
-                  className="accent-purple-500 h-4 w-4"
-                />
-                <label htmlFor="is_best_selling" className="text-slate-300 font-medium">Flag as "Best Selling" on Homepage</label>
-              </div>
-
-              <div className="flex gap-3 justify-end border-t border-slate-800 pt-4 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setShowProductModal(false)}
-                  className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="py-2.5 px-5 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 text-white rounded-xl text-xs font-semibold"
-                >
-                  Save Peptide Record
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showCouponModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-5">
-              <h3 className="font-display font-bold text-lg text-white">
-                {editingCoupon ? 'EDIT DISCOUNT CODE' : 'NEW DISCOUNT CODE'}
-              </h3>
-              <button onClick={() => setShowCouponModal(false)} className="text-slate-400 hover:text-white">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={saveCoupon} className="space-y-4 text-xs text-slate-300">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Code</label>
-                  <input
-                    type="text"
-                    required
-                    value={couponForm.code}
-                    onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })}
-                    placeholder="e.g. SALE20"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white font-mono focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Discount %</label>
-                  <input
-                    type="number"
-                    required
-                    min={1}
-                    max={100}
-                    step="0.01"
-                    value={couponForm.discount_percent}
-                    onChange={(e) => setCouponForm({ ...couponForm, discount_percent: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Label (optional, admin reference only)</label>
-                <input
-                  type="text"
-                  value={couponForm.name}
-                  onChange={(e) => setCouponForm({ ...couponForm, name: e.target.value })}
-                  placeholder="e.g. Black Friday promo"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Starts</label>
-                  <input
-                    type="datetime-local"
-                    value={couponForm.starts_at}
-                    onChange={(e) => setCouponForm({ ...couponForm, starts_at: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Ends</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={couponForm.expires_at}
-                    onChange={(e) => setCouponForm({ ...couponForm, expires_at: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-400 font-semibold mb-1 uppercase tracking-wider">Maximum uses (leave blank for unlimited)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={couponForm.max_uses}
-                  onChange={(e) => setCouponForm({ ...couponForm, max_uses: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
-                  placeholder="Unlimited"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-
-              <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-3 space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={couponForm.applies_to_all}
-                    onChange={(e) => setCouponForm({ ...couponForm, applies_to_all: e.target.checked })}
-                    className="h-4 w-4 accent-purple-600"
-                  />
-                  <span className="font-semibold text-slate-300">Applies to all products</span>
-                </label>
-
-                {!couponForm.applies_to_all && (
                   <div className="space-y-2">
-                    <p className="text-slate-500 text-[10px] uppercase tracking-wider font-semibold">Select eligible products</p>
-                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
-                      {products.map(prod => (
-                        <label key={prod.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-white/5 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={couponForm.product_ids.includes(prod.id)}
-                            onChange={(e) => {
-                              setCouponForm(prev => ({
-                                ...prev,
-                                product_ids: e.target.checked
-                                  ? [...prev.product_ids, prod.id]
-                                  : prev.product_ids.filter(id => id !== prod.id),
-                              }));
-                            }}
-                            className="h-4 w-4 accent-purple-600"
-                          />
-                          <span className="text-slate-300">{prod.name}</span>
-                        </label>
-                      ))}
-                      {products.length === 0 && (
-                        <p className="text-slate-500 text-[11px]">No products found.</p>
+                    <h3 className="font-display font-extrabold text-xl text-white uppercase tracking-wider">ORDER RECEIVED</h3>
+                    <p className="text-slate-400 text-xs">Your purchase has been submitted to Glow State.</p>
+                  </div>
+
+                  <div className="bg-[#050510]/80 border border-white/10 rounded-2xl p-4 text-left space-y-2 font-mono text-[11px]">
+                    <p><strong className="text-slate-500">Order Reference:</strong> <span className="text-emerald-400">#00{placedOrder.id}</span></p>
+                    <p><strong className="text-slate-500">Receipt Recipient:</strong> <span className="text-slate-300">{placedOrder.customer_email}</span></p>
+                    <p><strong className="text-slate-500">Total Amount:</strong> <span className="text-purple-400">${Number(placedOrder.total_amount).toFixed(2)} AUD</span></p>
+                    <p><strong className="text-slate-500">Chosen route:</strong> <span className="text-slate-300 uppercase">{placedOrder.payment_method.replace('_', ' ')}</span></p>
+                  </div>
+
+                  {placedOrder.status === 'paid' ? (
+                    <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
+                      <h4 className="font-bold text-emerald-300 flex items-center gap-1.5">
+                        <Check className="h-4 w-4" /> Payment Received
+                      </h4>
+                      <p>Your payment was successfully processed.</p>
+                      {placedOrder.transaction_id && (
+                        <p className="font-mono text-[11px] text-slate-400">Transaction ID: {placedOrder.transaction_id}</p>
                       )}
                     </div>
+                  ) : placedOrder.payment_method === 'bank_transfer' ? (
+                    <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl p-4 text-left space-y-2 leading-relaxed">
+                      <h4 className="font-bold text-blue-300">Action Required: Complete Bank Transfer</h4>
+                      <p><strong>Account Name:</strong> {paymentDetails?.account_name || 'Glow State'}</p>
+                      <p><strong>Bank:</strong> {paymentDetails?.bank_name || 'Commonwealth Bank'}</p>
+                      <p><strong>BSB:</strong> {paymentDetails?.bsb || '064 437'}</p>
+                      <p><strong>Account Number:</strong> {paymentDetails?.account_number || '10013757'}</p>
+                      <p className="font-bold text-yellow-400">
+                        Please use your order number as the reference and we will match your payment to your order.
+                      </p>
+                    </div>
+                  ) : placedOrder.payment_method === 'payid' ? (
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-2">
+                      <h4 className="font-bold text-purple-300">Action Required: Pay via PayID</h4>
+                      <p><strong>PayID:</strong> {paymentDetails?.payid_number || '0491186505'}</p>
+                      <p><strong>Name:</strong> {paymentDetails?.payid_name || 'T Amos'}</p>
+                      <p><strong>Amount:</strong> ${Number(placedOrder.total_amount).toFixed(2)} AUD</p>
+                      <p className="font-bold text-yellow-400">
+                        Please use your order number as the reference and we will match your payment to your order.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 text-left leading-relaxed space-y-3">
+                      <h4 className="font-bold text-purple-300">Pay with PayPal:</h4>
+                      <p>
+                        Complete your payment of{' '}
+                        <strong className="text-white">${Number(placedOrder.total_amount).toFixed(2)} AUD</strong>{' '}
+                        securely with PayPal.
+                      </p>
+
+                      <a
+                        href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-center py-3.5 bg-[#FFC220] hover:brightness-95 text-black font-bold rounded-xl text-sm transition-all"
+                      >
+                        Pay with PayPal
+                      </a>
+                    </div>
+                  )}
+
+                  <div className="border-t border-white/10 pt-5">
+                    <button
+                      onClick={() => {
+                        setIsCartOpen(false);
+                        setCheckoutStep('cart');
+                        setActivePage('shop');
+                        setPaypalError('');
+                      }}
+                      className="py-2.5 px-6 bg-white/5 hover:bg-white/10 text-white rounded-xl font-semibold transition-all w-full cursor-pointer border border-white/10"
+                    >
+                      Return to Research Catalog
+                    </button>
                   </div>
-                )}
-              </div>
-
-              {!editingCoupon && (
-                <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-3">
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={couponForm.notify_returning}
-                      onChange={(e) => setCouponForm({ ...couponForm, notify_returning: e.target.checked })}
-                      className="h-4 w-4 accent-purple-600 mt-0.5"
-                    />
-                    <span>
-                      <span className="font-semibold text-slate-300 block">Send Code to Returning Customers</span>
-                      <span className="text-slate-500 text-[10px] block mt-0.5">
-                        Emails this code and its deadline to previous customers only. The code itself can still be used by everyone.
-                      </span>
-                    </span>
-                  </label>
                 </div>
               )}
-
-              {couponFormError && (
-                <div className="flex items-center gap-2 py-2 px-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-[11px]">
-                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                  <span>{couponFormError}</span>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowCouponModal(false)}
-                  className="py-2.5 px-4 bg-slate-850 hover:bg-slate-800 text-slate-300 rounded-xl text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={couponSubmitting}
-                  className="py-2.5 px-5 bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-95 text-white rounded-xl text-xs font-semibold disabled:opacity-60"
-                >
-                  {couponSubmitting ? 'Saving…' : 'Save Discount Code'}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
+
+      {/* POPUP: Admin Dashboard Overlay */}
+      {isAdminOpen && (
+        <AdminPanel onClose={() => setIsAdminOpen(false)} />
+      )}
+
+      {/* Floating TikTok contact button */}
+      <a
+        href="https://www.tiktok.com/@glowstatepep"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Follow us on TikTok"
+        className="fixed bottom-24 right-5 z-40 h-14 w-14 rounded-full bg-black hover:bg-slate-800 shadow-lg shadow-black/40 flex items-center justify-center transition-transform hover:scale-105 border border-white/10"
+      >
+        <svg viewBox="0 0 448 512" className="h-6 w-6 fill-white" xmlns="http://www.w3.org/2000/svg">
+          <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0l88,0a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z"/>
+        </svg>
+      </a>
+
+      {/* Floating WhatsApp contact button */}
+      <a
+        href="https://wa.me/61491186505?text=Hello%2C%20I%20would%20like%20to%20make%20an%20inquiry%20about%20your%20products."
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Chat with us on WhatsApp"
+        className="fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full bg-[#25D366] hover:bg-[#20bd5a] shadow-lg shadow-black/40 flex items-center justify-center transition-transform hover:scale-105"
+      >
+        <svg viewBox="0 0 32 32" className="h-7 w-7 fill-white" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16.004 3C9.377 3 4 8.373 4 15c0 2.31.66 4.47 1.804 6.3L4 29l7.9-1.77A11.94 11.94 0 0 0 16.004 27C22.63 27 28 21.627 28 15S22.63 3 16.004 3Zm0 21.75a9.7 9.7 0 0 1-4.95-1.36l-.355-.21-4.69 1.05 1.02-4.57-.23-.37A9.73 9.73 0 0 1 5.25 15c0-5.93 4.82-10.75 10.754-10.75S26.75 9.07 26.75 15 21.94 24.75 16.004 24.75Zm5.42-7.36c-.297-.148-1.755-.866-2.028-.965-.272-.099-.47-.148-.668.148-.198.297-.767.965-.94 1.163-.173.198-.347.223-.644.075-.297-.148-1.253-.462-2.387-1.472-.883-.788-1.48-1.76-1.653-2.057-.173-.297-.018-.457.13-.605.134-.133.297-.347.446-.52.148-.174.198-.298.297-.496.099-.198.05-.372-.025-.52-.074-.148-.668-1.61-.916-2.204-.242-.579-.487-.5-.668-.51l-.569-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.478s1.065 2.874 1.213 3.072c.148.198 2.096 3.2 5.078 4.487.71.306 1.263.489 1.694.626.712.227 1.36.195 1.872.118.571-.085 1.755-.717 2.003-1.41.248-.694.248-1.288.173-1.41-.074-.124-.272-.198-.569-.347Z"/>
+        </svg>
+      </a>
     </div>
   );
-};
+}
