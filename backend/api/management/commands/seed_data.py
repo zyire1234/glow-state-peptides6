@@ -116,8 +116,13 @@ class Command(BaseCommand):
                 description="Glow State Peptides database initialized with premium seed products.",
             )
 
+        # Only seed payment details the FIRST time (when no row exists yet).
+        # Previously this re-ran on every deploy whenever the bank account
+        # number was still the default, which silently reset the PayPal
+        # email / Client ID that had been edited in Django admin.
+        first_time = not PaymentDetails.objects.filter(pk=1).exists()
         details = PaymentDetails.load()
-        if not details.account_number or details.account_number == "10013757":
+        if first_time:
             details.bank_name = "Commonwealth Bank"
             details.account_name = "Glow State"
             details.bsb = "064 437"
@@ -128,3 +133,7 @@ class Command(BaseCommand):
             details.payid_name = "T Amos"
             details.save()
             self.stdout.write(self.style.SUCCESS("Seeded default payment details."))
+        elif not details.paypal_client_id and settings.PAYPAL_CLIENT_ID:
+            # Never overwrite an existing value; only fill it in if blank.
+            details.paypal_client_id = settings.PAYPAL_CLIENT_ID
+            details.save(update_fields=["paypal_client_id"])
