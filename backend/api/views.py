@@ -751,10 +751,8 @@ def orders_collection(request):
         )
         notify_admin_new_order(order)
         notify_customer_order_confirmation(order)
-        # Feature 1 (promotional message): customers who order while the
-        # promo window is open also receive the promo email. Self-contained,
-        # background, and never raises — the order is already saved.
-        campaigns.send_promo_for_new_order(order)
+        # NOTE: the automatic promo/discount email after ordering has been
+        # switched off. Customers now only receive the order confirmation.
         return JsonResponse(order.to_dict(), status=201)
 
     # GET — admin only
