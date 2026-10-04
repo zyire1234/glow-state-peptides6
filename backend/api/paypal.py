@@ -1,122 +1,81 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+"""Minimal server-side PayPal REST API (Orders v2) client.
 
-// Real PayPal Checkout integration using the official PayPal JS SDK.
-// The SDK is loaded with the public client ID (fetched from the backend,
-// never hardcoded). Order creation and capture happen server-side via
-// /api/paypal/create-order and /api/paypal/capture-order so the actual
-// payment verification always goes through PayPal's REST API on the backend.
+Uses the PayPal Client ID + Secret (kept only on the server, via env vars)
+to create and capture real PayPal orders. The frontend never talks to
+PayPal's REST API directly for money-moving calls — it only uses the
+public PayPal JS SDK (client-id only) to render the button, then hands
+off to these two endpoints to actually create/capture the payment.
+"""
+from decimal import Decimal
 
-import React, { useEffect, useRef, useState } from 'react';
-import { API_BASE_URL } from '../lib/apiConfig';
+import requests
+from django.conf import settings
 
-declare global {
-  interface Window {
-    paypal?: any;
-  }
-}
 
-interface PayPalButtonProps {
-  clientId: string;
-  orderId: number;
-  onSuccess: (order: any) => void;
-  onError?: (message: string) => void;
-}
+class PayPalError(Exception):
+    pass
 
-let sdkLoadPromise: Promise<void> | null = null;
-let loadedForClientId: string | null = null;
 
-function loadPayPalSdk(clientId: string): Promise<void> {
-  if (window.paypal && loadedForClientId === clientId) return Promise.resolve();
-  sdkLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.getElementById('paypal-sdk-script');
-    if (existing) existing.remove();
-    const script = document.createElement('script');
-    script.id = 'paypal-sdk-script';
-    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=AUD&intent=capture&components=buttons&enable-funding=card`;
-    script.onload = () => {
-      loadedForClientId = clientId;
-      resolve();
-    };
-    script.onerror = () => reject(new Error('Failed to load the PayPal SDK.'));
-    document.body.appendChild(script);
-  });
-  return sdkLoadPromise;
-}
+def _api_base():
+    return (
+        "https://api-m.paypal.com"
+        if settings.PAYPAL_MODE == "live"
+        else "https://api-m.sandbox.paypal.com"
+    )
 
-export function PayPalButton({ clientId, orderId, onSuccess, onError }: PayPalButtonProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!clientId) {
-      setStatus('error');
-      return;
+def get_access_token():
+    client_id = settings.PAYPAL_CLIENT_ID
+    client_secret = settings.PAYPAL_CLIENT_SECRET
+    if not client_id or not client_secret:
+        raise PayPalError(
+            "PayPal is not configured on the server. Set PAYPAL_CLIENT_ID and "
+            "PAYPAL_CLIENT_SECRET environment variables."
+        )
+    resp = requests.post(
+        f"{_api_base()}/v1/oauth2/token",
+        headers={"Accept": "application/json", "Accept-Language": "en_US"},
+        data={"grant_type": "client_credentials"},
+        auth=(client_id, client_secret),
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise PayPalError(f"Failed to authenticate with PayPal: {resp.text}")
+    return resp.json()["access_token"]
+
+
+def create_order(amount, currency="AUD", reference_id=None):
+    token = get_access_token()
+    body = {
+        "intent": "CAPTURE",
+        "purchase_units": [
+            {
+                "reference_id": str(reference_id) if reference_id else None,
+                "amount": {"currency_code": currency, "value": f"{Decimal(str(amount)):.2f}"},
+                "description": "Glow State Peptides order",
+            }
+        ],
     }
+    body["purchase_units"][0] = {k: v for k, v in body["purchase_units"][0].items() if v is not None}
 
-    setStatus('loading');
-    loadPayPalSdk(clientId)
-      .then(() => {
-        if (cancelled || !containerRef.current || !window.paypal) return;
-        containerRef.current.innerHTML = '';
-        window.paypal
-          .Buttons({
-            style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
-            // Guest card checkout (no PayPal login) shows as a second button.
-            createOrder: async () => {
-              const res = await fetch(`${API_BASE_URL}/paypal/create-order`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_id: orderId }),
-              });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.error || 'Could not start PayPal checkout.');
-              return data.paypal_order_id;
-            },
-            onApprove: async (data: any) => {
-              const res = await fetch(`${API_BASE_URL}/paypal/capture-order`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ order_id: orderId, paypal_order_id: data.orderID }),
-              });
-              const order = await res.json();
-              if (!res.ok) {
-                onError?.(order.error || 'Payment could not be confirmed.');
-                return;
-              }
-              onSuccess(order);
-            },
-            onError: (err: any) => {
-              onError?.(err?.message || 'PayPal checkout failed.');
-            },
-          })
-          .render(containerRef.current);
-        if (!cancelled) setStatus('ready');
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setStatus('error');
-          onError?.(err.message);
-        }
-      });
+    resp = requests.post(
+        f"{_api_base()}/v2/checkout/orders",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        json=body,
+        timeout=15,
+    )
+    if resp.status_code not in (200, 201):
+        raise PayPalError(f"Failed to create PayPal order: {resp.text}")
+    return resp.json()
 
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId, orderId]);
 
-  if (!clientId) {
-    return null;
-  }
-
-  return (
-    <div>
-      {status === 'loading' && <div className="text-[11px] text-slate-400 mb-2">Loading PayPal…</div>}
-      <div ref={containerRef} />
-    </div>
-  );
-}
+def capture_order(paypal_order_id):
+    token = get_access_token()
+    resp = requests.post(
+        f"{_api_base()}/v2/checkout/orders/{paypal_order_id}/capture",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    if resp.status_code not in (200, 201):
+        raise PayPalError(f"Failed to capture PayPal order: {resp.text}")
+    return resp.json()
