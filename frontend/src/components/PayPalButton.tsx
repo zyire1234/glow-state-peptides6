@@ -35,7 +35,7 @@ function loadPayPalSdk(clientId: string): Promise<void> {
     if (existing) existing.remove();
     const script = document.createElement('script');
     script.id = 'paypal-sdk-script';
-    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=AUD&intent=capture`;
+    script.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=AUD&intent=capture&components=buttons&enable-funding=card`;
     script.onload = () => {
       loadedForClientId = clientId;
       resolve();
@@ -65,6 +65,7 @@ export function PayPalButton({ clientId, orderId, onSuccess, onError }: PayPalBu
         window.paypal
           .Buttons({
             style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
+            // Guest card checkout (no PayPal login) shows as a second button.
             createOrder: async () => {
               const res = await fetch(`${API_BASE_URL}/paypal/create-order`, {
                 method: 'POST',
