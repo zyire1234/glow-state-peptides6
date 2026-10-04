@@ -1,0 +1,32 @@
+import json
+from decimal import Decimal
+from unittest import mock
+from django.test import TestCase
+from api.models import Product, Order
+
+class PP(TestCase):
+    def setUp(self):
+        self.p = Product.objects.create(name="X", price=Decimal("100.00"), stock=10)
+    def _order(self, total, method="paypal_invoice"):
+        return self.client.post("/api/orders", json.dumps({
+            "customer_name":"a","customer_email":"a@b.co","customer_address":"x",
+            "payment_method":method,"total_amount":total,
+            "items":[{"product_id":self.p.id,"quantity":1,"price":0.01}]}), content_type="application/json")
+    def test_tampered_total_rejected(self):
+        self.assertEqual(self._order(0.01).status_code, 400)
+    def test_correct_total_ok_and_server_price(self):
+        r = self._order(113.30)   # (100+10)*1.03
+        self.assertEqual(r.status_code, 201, r.content)
+        o = Order.objects.get()
+        self.assertEqual(o.total_amount, Decimal("113.30"))
+        self.assertEqual(o.items.first().price, Decimal("100.00"))
+    def test_capture_checks(self):
+        self._order(113.30); o = Order.objects.get()
+        good = {"status":"COMPLETED","purchase_units":[{"reference_id":str(o.id),"payments":{"captures":[{"id":"C1","status":"COMPLETED","amount":{"currency_code":"AUD","value":"113.30"}}]}}]}
+        bad = json.loads(json.dumps(good)); bad["purchase_units"][0]["payments"]["captures"][0]["amount"]["value"]="1.00"
+        with mock.patch("api.paypal.capture_order", return_value=bad):
+            r = self.client.post("/api/paypal/capture-order", json.dumps({"order_id":o.id,"paypal_order_id":"P"}), content_type="application/json")
+        self.assertEqual(r.status_code, 402); o.refresh_from_db(); self.assertEqual(o.status,"pending")
+        with mock.patch("api.paypal.capture_order", return_value=good):
+            r = self.client.post("/api/paypal/capture-order", json.dumps({"order_id":o.id,"paypal_order_id":"P"}), content_type="application/json")
+        self.assertEqual(r.status_code, 200); o.refresh_from_db(); self.assertEqual(o.status,"paid")
