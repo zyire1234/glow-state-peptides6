@@ -2,6 +2,7 @@ import base64
 import binascii
 import json
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.mail import send_mail
@@ -681,6 +682,24 @@ def orders_collection(request):
         # (never trusted from the client), applied ONCE to the eligible
         # subtotal — the whole order, or just the coupon's selected
         # products — never split up per product line.
+        # PRICES ARE NEVER TRUSTED FROM THE BROWSER. Every line is re-priced
+        # from the Product table, and the final total is recomputed here
+        # (subtotal - discount + shipping + 3% PayPal fee) and must match
+        # what the customer was shown, otherwise the order is rejected.
+        priced_items = []
+        for item in items:
+            try:
+                pid = int(item.get("product_id"))
+                qty = int(item.get("quantity", 0))
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "Invalid item in cart."}, status=400)
+            product = Product.objects.filter(id=pid).first()
+            if not product or qty <= 0:
+                return JsonResponse({"error": "A product in your cart is no longer available. Please refresh and try again."}, status=400)
+            unit = product.discount_price if (product.is_discounted and product.discount_price) else product.price
+            priced_items.append({"product_id": pid, "quantity": qty, "price": float(unit), "product_name": product.name})
+        items = priced_items
+
         coupon_code = (data.get("coupon_code") or "").strip().upper()
         coupon = None
         discount_amount = 0
@@ -689,6 +708,24 @@ def orders_collection(request):
             if error:
                 return JsonResponse({"error": error}, status=400)
             discount_amount = coupon.calculate_discount(items)
+
+        subtotal = sum(Decimal(str(i["price"])) * i["quantity"] for i in items)
+        discounted = max(Decimal("0"), subtotal - Decimal(str(discount_amount or 0)))
+        shipping = Decimal("0") if subtotal > Decimal("160") else Decimal("10")
+        paypal_fee = (
+            (discounted + shipping) * Decimal("0.03")
+            if data.get("payment_method") == "paypal_invoice" else Decimal("0")
+        )
+        server_total = (discounted + shipping + paypal_fee).quantize(Decimal("0.01"))
+        try:
+            client_total = Decimal(str(data["total_amount"]))
+        except Exception:
+            return JsonResponse({"error": "Invalid total amount."}, status=400)
+        if abs(client_total - server_total) > Decimal("0.02"):
+            return JsonResponse(
+                {"error": "Prices changed since your cart was loaded. Please refresh the page and try again."},
+                status=400,
+            )
 
         with transaction.atomic():
             if coupon:
@@ -709,7 +746,7 @@ def orders_collection(request):
                 customer_email=data["customer_email"],
                 customer_address=data["customer_address"],
                 payment_method=data["payment_method"],
-                total_amount=data["total_amount"],
+                total_amount=server_total,
                 coupon_code=coupon_code,
                 discount_amount=discount_amount if coupon_code else 0,
                 status="pending",
@@ -997,8 +1034,13 @@ def payment_details(request):
 # 11. PayPal Checkout (real PayPal Orders v2 API — not a placeholder)
 # ---------------------------------------------------------------------------
 
+import logging
+_pp_log = logging.getLogger(__name__)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
+@rate_limit("paypal", max_attempts=30)
 def paypal_create_order(request):
     data = _body(request)
     order_id = data.get("order_id")
@@ -1010,16 +1052,21 @@ def paypal_create_order(request):
     except Order.DoesNotExist:
         return JsonResponse({"error": "Order not found."}, status=404)
 
+    if order.status != "pending":
+        return JsonResponse({"error": "This order can no longer be paid online."}, status=409)
+
     try:
-        paypal_order = paypal.create_order(float(order.total_amount), reference_id=order.id)
+        paypal_order = paypal.create_order(order.total_amount, reference_id=order.id)
     except paypal.PayPalError as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+        _pp_log.error("PayPal create_order failed for order %s: %s", order.id, exc)
+        return JsonResponse({"error": "Could not start PayPal checkout. Please try again or use another payment method."}, status=502)
 
     return JsonResponse({"paypal_order_id": paypal_order["id"]})
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
+@rate_limit("paypal", max_attempts=30)
 def paypal_capture_order(request):
     data = _body(request)
     order_id = data.get("order_id")
@@ -1032,23 +1079,43 @@ def paypal_capture_order(request):
     except Order.DoesNotExist:
         return JsonResponse({"error": "Order not found."}, status=404)
 
+    # Already paid (e.g. double-click / retry): return it, don't re-process.
+    if order.status == "paid" and order.transaction_id:
+        return JsonResponse(order.to_dict())
+    if order.status != "pending":
+        return JsonResponse({"error": "This order can no longer be paid online."}, status=409)
+
     try:
         capture = paypal.capture_order(paypal_order_id)
     except paypal.PayPalError as exc:
-        return JsonResponse({"error": str(exc)}, status=502)
+        _pp_log.error("PayPal capture failed for order %s: %s", order.id, exc)
+        return JsonResponse({"error": "Payment could not be confirmed. If you were charged, contact support with your order number."}, status=502)
 
-    status = capture.get("status")
-    if status != "COMPLETED":
-        return JsonResponse({"error": f"PayPal payment not completed (status: {status})."}, status=402)
+    if capture.get("status") != "COMPLETED":
+        return JsonResponse({"error": f"PayPal payment not completed (status: {capture.get('status')})."}, status=402)
 
-    transaction_id = paypal_order_id
     try:
-        transaction_id = (
-            capture["purchase_units"][0]["payments"]["captures"][0]["id"]
-        )
-    except (KeyError, IndexError):
-        pass
+        unit = capture["purchase_units"][0]
+        cap = unit["payments"]["captures"][0]
+    except (KeyError, IndexError, TypeError):
+        return JsonResponse({"error": "PayPal returned an unexpected response."}, status=502)
 
+    # The money actually captured must be for THIS order and the FULL amount.
+    paid_ok = (
+        cap.get("status") == "COMPLETED"
+        and str(unit.get("reference_id", "")) == str(order.id)
+        and (cap.get("amount") or {}).get("currency_code") == "AUD"
+        and Decimal(str((cap.get("amount") or {}).get("value", "0"))) == order.total_amount
+    )
+    if not paid_ok:
+        log_activity(
+            "order_payment_mismatch",
+            f"Order #{order.id}: PayPal capture {cap.get('id')} did not match the order "
+            f"(status={cap.get('status')}, amount={cap.get('amount')}). Check PayPal manually.",
+        )
+        return JsonResponse({"error": "Payment verification failed. Please contact support with your order number."}, status=402)
+
+    transaction_id = cap.get("id") or paypal_order_id
     order.status = "paid"
     order.transaction_id = transaction_id
     order.paid_at = timezone.now()
