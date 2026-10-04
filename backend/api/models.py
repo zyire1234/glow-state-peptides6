@@ -358,6 +358,10 @@ class PaymentDetails(models.Model):
         default="",
         help_text="Public PayPal REST API client ID (sandbox or live) used to load the JS SDK on the storefront.",
     )
+    paypal_enabled = models.BooleanField(
+        default=True,
+        help_text="Untick to hide PayPal from the public checkout (e.g. while PayPal has an issue).",
+    )
     payid_number = models.CharField(
         max_length=40,
         default="0491186505",
@@ -396,6 +400,7 @@ class PaymentDetails(models.Model):
             "account_number": self.account_number,
             "paypal_email": self.paypal_email,
             "paypal_client_id": self.paypal_client_id,
+            "paypal_enabled": self.paypal_enabled,
             "payid_number": self.payid_number,
             "payid_name": self.payid_name,
         }
