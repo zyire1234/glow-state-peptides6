@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
   MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink
@@ -75,6 +75,9 @@ export default function App() {
     state: '',
   });
   const [placedOrder, setPlacedOrder] = useState<any>(null);
+  // Guards against double-tap / double-click on "Place Order" creating two orders.
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const placingOrderRef = useRef(false);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [paypalError, setPaypalError] = useState<string>('');
   // True while we're still waiting on the very first successful response from
@@ -368,6 +371,10 @@ export default function App() {
   const handlePlaceOrderRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
+    // Ignore a second submit while the first is still in flight.
+    if (placingOrderRef.current) return;
+    placingOrderRef.current = true;
+    setIsPlacingOrder(true);
 
     const orderTotal = getOrderTotal();
     const itemsPayload = cart.map(item => ({
@@ -416,6 +423,9 @@ export default function App() {
       }
     } catch (err) {
       alert('Network failure. Could not connect to order dispatch server.');
+    } finally {
+      placingOrderRef.current = false;
+      setIsPlacingOrder(false);
     }
   };
 
@@ -1367,9 +1377,10 @@ export default function App() {
                     </button>
                     <button
                       type="submit"
-                      className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl transition-all cursor-pointer"
+                      disabled={isPlacingOrder}
+                      className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Place Order
+                      {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
                     </button>
                   </div>
                 </form>
