@@ -39,6 +39,7 @@ interface PaymentDetails {
   account_number: string;
   paypal_email: string;
   paypal_client_id: string;
+  paypal_enabled?: boolean;
   payid_number: string;
   payid_name: string;
 }
@@ -78,6 +79,11 @@ export default function App() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const placingOrderRef = useRef(false);
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
+  // PayPal can be switched off from the admin panel; treat "unknown" as enabled.
+  const paypalEnabled = paymentDetails?.paypal_enabled !== false;
+  useEffect(() => {
+    if (!paypalEnabled && paymentMethod === 'paypal_invoice') setPaymentMethod('bank_transfer');
+  }, [paypalEnabled, paymentMethod]);
   const [paypalError, setPaypalError] = useState<string>('');
   // True while we're still waiting on the very first successful response from
   // the backend. Render's free-tier server "sleeps" after ~15 minutes of no
@@ -1177,6 +1183,7 @@ export default function App() {
                       <span className="text-[9px] font-normal">Instant payments via PayID (Real-time)</span>
                     </button>
 
+                    {paypalEnabled && (
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('paypal_invoice')}
@@ -1190,6 +1197,7 @@ export default function App() {
                       <span className="text-[9px] font-normal">Pay with PayPal</span>
                       <span className="text-[9px] font-normal">Express payment with Apple Pay available</span>
                     </button>
+                    )}
                   </div>
 
                   {/* Payment instructions warning */}
