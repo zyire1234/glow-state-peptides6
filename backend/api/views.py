@@ -682,6 +682,12 @@ def orders_collection(request):
         # (never trusted from the client), applied ONCE to the eligible
         # subtotal — the whole order, or just the coupon's selected
         # products — never split up per product line.
+        if data.get("payment_method") == "paypal_invoice" and not PaymentDetails.load().paypal_enabled:
+            return JsonResponse(
+                {"error": "PayPal is temporarily unavailable. Please choose Bank Transfer or PayID."},
+                status=400,
+            )
+
         # PRICES ARE NEVER TRUSTED FROM THE BROWSER. Every line is re-priced
         # from the Product table, and the final total is recomputed here
         # (subtotal - discount + shipping + 3% PayPal fee) and must match
@@ -1030,6 +1036,26 @@ def payment_details(request):
     return JsonResponse(details.to_dict())
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+@require_admin
+def paypal_toggle(request):
+    """Admin-only: show/hide PayPal on the public checkout.
+    Body: {"enabled": true|false}"""
+    data = _body(request)
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return JsonResponse({"error": "'enabled' must be true or false."}, status=400)
+    details = PaymentDetails.load()
+    details.paypal_enabled = enabled
+    details.save(update_fields=["paypal_enabled"])
+    log_activity(
+        "paypal_toggled",
+        f"Admin {'ENABLED' if enabled else 'DISABLED'} PayPal on the public checkout.",
+    )
+    return JsonResponse(details.to_dict())
+
+
 # ---------------------------------------------------------------------------
 # 11. PayPal Checkout (real PayPal Orders v2 API — not a placeholder)
 # ---------------------------------------------------------------------------
@@ -1054,6 +1080,9 @@ def paypal_create_order(request):
 
     if order.status != "pending":
         return JsonResponse({"error": "This order can no longer be paid online."}, status=409)
+
+    if not PaymentDetails.load().paypal_enabled:
+        return JsonResponse({"error": "PayPal is temporarily unavailable."}, status=503)
 
     try:
         paypal_order = paypal.create_order(order.total_amount, reference_id=order.id)
