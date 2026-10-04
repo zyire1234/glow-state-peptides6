@@ -30,3 +30,37 @@ class PP(TestCase):
         with mock.patch("api.paypal.capture_order", return_value=good):
             r = self.client.post("/api/paypal/capture-order", json.dumps({"order_id":o.id,"paypal_order_id":"P"}), content_type="application/json")
         self.assertEqual(r.status_code, 200); o.refresh_from_db(); self.assertEqual(o.status,"paid")
+
+
+class PayPalToggle(TestCase):
+    def setUp(self):
+        from api.models import AdminUser, AdminSession
+        self.p = Product.objects.create(name="X", price=Decimal("100.00"), stock=10)
+        user = AdminUser.objects.create(username="t", password_hash="x")
+        self.token = AdminSession.objects.create(admin_user=user).token
+
+    def _toggle(self, enabled, auth=True):
+        h = {"HTTP_AUTHORIZATION": f"Bearer {self.token}"} if auth else {}
+        return self.client.post("/api/payment-details/paypal-toggle",
+                                json.dumps({"enabled": enabled}), content_type="application/json", **h)
+
+    def _paypal_order(self):
+        return self.client.post("/api/orders", json.dumps({
+            "customer_name": "a", "customer_email": "a@b.co", "customer_address": "x",
+            "payment_method": "paypal_invoice", "total_amount": 113.30,
+            "items": [{"product_id": self.p.id, "quantity": 1, "price": 100}]}),
+            content_type="application/json")
+
+    def test_requires_admin(self):
+        self.assertEqual(self._toggle(False, auth=False).status_code, 401)
+
+    def test_public_flag_defaults_on_then_off(self):
+        self.assertTrue(self.client.get("/api/payment-details").json()["paypal_enabled"])
+        self.assertEqual(self._toggle(False).status_code, 200)
+        self.assertFalse(self.client.get("/api/payment-details").json()["paypal_enabled"])
+
+    def test_paypal_orders_blocked_when_off_and_allowed_when_on(self):
+        self._toggle(False)
+        self.assertEqual(self._paypal_order().status_code, 400)
+        self._toggle(True)
+        self.assertEqual(self._paypal_order().status_code, 201)
