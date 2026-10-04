@@ -346,7 +346,7 @@ export default function App() {
   // integration/API keys required, just PayPal's own hosted payment page
   // pre-filled with the recipient, amount and a reference note.
   const getPaypalPayUrl = (amount: number, reference?: string) => {
-    const email = paymentDetails?.paypal_email || 'Glowstatepeps@hotmail.com';
+    const email = paymentDetails?.paypal_email || 'Glowstatesupport@gmail.com';
     const params = new URLSearchParams({
       cmd: '_xclick',
       business: email,
