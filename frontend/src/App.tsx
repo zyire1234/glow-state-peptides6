@@ -1444,7 +1444,7 @@ export default function App() {
                         securely with PayPal.
                       </p>
 
-                      {paymentDetails?.paypal_client_id ? (
+                      {paymentDetails?.paypal_client_id && (
                         <>
                           <PayPalButton
                             clientId={paymentDetails.paypal_client_id}
@@ -1485,16 +1485,24 @@ export default function App() {
                             <p className="text-[11px] text-red-400 font-semibold">{paypalError}</p>
                           )}
                         </>
-                      ) : (
+                      )}
+
+                      <div className="pt-3 border-t border-white/10 space-y-2">
+                        <p className="text-[11px] text-slate-400">
+                          Don't want to log in? Pay as a guest with your card or Apple Pay (Safari/iPhone):
+                        </p>
                         <a
                           href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="block w-full text-center py-3.5 bg-[#FFC220] hover:brightness-95 text-black font-bold rounded-xl text-sm transition-all"
                         >
-                          Pay with PayPal
+                          Pay with Card / Apple Pay (no login)
                         </a>
-                      )}
+                        <p className="text-[10px] text-slate-500">
+                          Use order #{placedOrder.id} as the reference. We confirm guest payments manually.
+                        </p>
+                      </div>
                     </div>
                   )}
 
