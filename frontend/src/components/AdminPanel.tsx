@@ -326,6 +326,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         body: JSON.stringify({ enabled: next }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        // Saved login token is no longer valid (expired). Send her back to the login screen.
+        handleLogout();
+        return;
+      }
       if (!res.ok) {
         setPaypalMessage({ type: 'error', text: data.error || 'Could not update PayPal. Please try again.' });
       } else {
