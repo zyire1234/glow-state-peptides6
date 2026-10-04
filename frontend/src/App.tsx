@@ -7,7 +7,6 @@ import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
-import { PayPalButton } from './components/PayPalButton';
 import { API_BASE_URL } from './lib/apiConfig';
 import { trackTikTokEvent } from './lib/tiktokEvents';
 // Connected to the real Django + SQLite backend. All `/api/...` calls below
@@ -1444,65 +1443,14 @@ export default function App() {
                         securely with PayPal.
                       </p>
 
-                      {paymentDetails?.paypal_client_id && (
-                        <>
-                          <PayPalButton
-                            clientId={paymentDetails.paypal_client_id}
-                            orderId={placedOrder.id}
-                            onSuccess={(updatedOrder) => {
-                              setPaypalError('');
-                              setPlacedOrder(updatedOrder);
-
-                              // TikTok Pixel — CompletePayment. This fires ONLY
-                              // here, inside PayPalButton's onSuccess callback,
-                              // which only runs after POST /api/paypal/capture-order
-                              // has confirmed PayPal actually returned status
-                              // "COMPLETED" (see backend/api/views.py:paypal_capture_order).
-                              // It never fires just from reaching the checkout/
-                              // success screen. Deduped via sessionStorage keyed to
-                              // this order's id + transaction_id so it cannot fire
-                              // twice for the same completed payment.
-                              const dedupeKey = `ttq_complete_payment_${updatedOrder.id}_${updatedOrder.transaction_id}`;
-                              if (!sessionStorage.getItem(dedupeKey)) {
-                                sessionStorage.setItem(dedupeKey, '1');
-                                trackTikTokEvent('CompletePayment', {
-                                  value: Number(updatedOrder.total_amount),
-                                  currency: 'AUD',
-                                  order_id: updatedOrder.id,
-                                  content_type: 'product',
-                                  contents: (updatedOrder.items || []).map((item: any) => ({
-                                    content_id: String(item.product_id),
-                                    content_name: item.product_name,
-                                    quantity: item.quantity,
-                                    price: item.price,
-                                  })),
-                                });
-                              }
-                            }}
-                            onError={(message) => setPaypalError(message)}
-                          />
-                          {paypalError && (
-                            <p className="text-[11px] text-red-400 font-semibold">{paypalError}</p>
-                          )}
-                        </>
-                      )}
-
-                      <div className="pt-3 border-t border-white/10 space-y-2">
-                        <p className="text-[11px] text-slate-400">
-                          Don't want to log in? Pay as a guest with your card or Apple Pay (Safari/iPhone):
-                        </p>
-                        <a
-                          href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block w-full text-center py-3.5 bg-[#FFC220] hover:brightness-95 text-black font-bold rounded-xl text-sm transition-all"
-                        >
-                          Pay with Card / Apple Pay (no login)
-                        </a>
-                        <p className="text-[10px] text-slate-500">
-                          Use order #{placedOrder.id} as the reference. We confirm guest payments manually.
-                        </p>
-                      </div>
+                      <a
+                        href={getPaypalPayUrl(Number(placedOrder.total_amount), `#00${placedOrder.id}`)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-center py-3.5 bg-[#FFC220] hover:brightness-95 text-black font-bold rounded-xl text-sm transition-all"
+                      >
+                        Pay with PayPal
+                      </a>
                     </div>
                   )}
 
