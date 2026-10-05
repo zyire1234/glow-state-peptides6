@@ -1790,10 +1790,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 </div>
               </div>
 
-              <TabHeader
-                title="Account Security"
-                description="Change your admin password. This site has no backend server, so this password is only ever stored (hashed) in this browser's local storage — it is never shown on any public page."
-              />
+              <TabHeader title="Account Security" />
 
               <form onSubmit={handleChangePassword} className={`${PANEL} p-6 space-y-4`}>
                 {pwMessage && (
