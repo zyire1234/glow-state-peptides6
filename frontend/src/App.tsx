@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
-  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink
+  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink, Eye
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
@@ -25,12 +25,33 @@ interface Product {
   category: string;
   stock: number;
   has_certificate?: boolean;
+  // Optional add-on (Disposable Pen) — admin ON/OFF switches only.
+  addon_enabled?: boolean;
+  addon_pen_in_customer_view?: boolean;
+  addon_show_view_pen_button?: boolean;
 }
 
 interface CartItem {
   product: Product;
   quantity: number;
+  // Optional Disposable Pen add-on chosen for this cart line (charged once).
+  addon_selected?: boolean;
 }
+
+// Optional add-on: Disposable Pen Preparation. Name, description, price and
+// image are FIXED here (admins can only switch it on/off per product). The
+// backend re-validates and re-prices it on every order — it never trusts
+// this number.
+const PEN_ADDON_NAME = 'Disposable Pen Preparation';
+const PEN_ADDON_DESCRIPTION = 'Have your product prepared in a disposable pen for ease of use. Includes 5 needle heads and 5 prep pads.';
+const PEN_ADDON_PRICE = 50;
+const PEN_IMAGE_SRC = '/glow-state-pen.jpg'; // served from frontend/public
+const CART_STORAGE_KEY = 'glowstate_cart_v1';
+
+// The add-on can only be shown, selected or charged when the admin has it
+// switched on for the product AND set to appear in the customer view.
+const isPenAddonAvailable = (p?: Product | null) =>
+  !!p && p.addon_enabled === true && p.addon_pen_in_customer_view === true;
 
 interface PaymentDetails {
   bank_name: string;
@@ -54,6 +75,11 @@ export default function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+
+  // Optional Disposable Pen add-on (product modal) + "View Pen" image modal
+  const [addonChecked, setAddonChecked] = useState<boolean>(false);
+  const [showPenModal, setShowPenModal] = useState<boolean>(false);
+  const cartHydratedRef = useRef(false);
 
   // Filter category state
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
@@ -129,6 +155,79 @@ export default function App() {
     });
   }, [selectedProduct]);
 
+  // Every time a product modal opens/closes, the add-on checkbox starts
+  // unchecked and any open "View Pen" image is closed.
+  useEffect(() => {
+    setAddonChecked(false);
+    setShowPenModal(false);
+  }, [selectedProduct?.id]);
+
+  // Close the "View Pen" image with the Escape key.
+  useEffect(() => {
+    if (!showPenModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPenModal(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPenModal]);
+
+  // Cart persistence: restore the cart (including each line's add-on choice)
+  // after a page refresh, once the real products have loaded so every item is
+  // rebuilt from fresh data. Only product id, quantity and add-on choice are
+  // stored — never prices.
+  useEffect(() => {
+    if (cartHydratedRef.current || products.length === 0) return;
+    cartHydratedRef.current = true;
+    try {
+      const raw = localStorage.getItem(CART_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { id: number; qty: number; addon?: boolean }[];
+      const restored: CartItem[] = [];
+      saved.forEach(entry => {
+        const product = products.find(p => p.id === entry.id);
+        if (!product || !(entry.qty > 0)) return;
+        restored.push({
+          product,
+          quantity: entry.qty,
+          addon_selected: !!entry.addon && isPenAddonAvailable(product),
+        });
+      });
+      if (restored.length > 0) setCart(prev => (prev.length === 0 ? restored : prev));
+    } catch {
+      /* ignore corrupted or unavailable storage */
+    }
+  }, [products]);
+
+  useEffect(() => {
+    if (!cartHydratedRef.current) return;
+    try {
+      localStorage.setItem(
+        CART_STORAGE_KEY,
+        JSON.stringify(cart.map(i => ({ id: i.product.id, qty: i.quantity, addon: !!i.addon_selected })))
+      );
+    } catch {
+      /* storage unavailable (e.g. private mode) — cart still works in memory */
+    }
+  }, [cart]);
+
+  // If an admin switches the add-on off for a product (or changes anything
+  // else) while it is already in someone's cart, refresh the cart line from
+  // the latest product data and drop an add-on that is no longer available.
+  useEffect(() => {
+    if (products.length === 0) return;
+    setCart(prev => {
+      if (prev.length === 0) return prev;
+      return prev.map(item => {
+        const fresh = products.find(p => p.id === item.product.id);
+        if (!fresh) return item;
+        return {
+          ...item,
+          product: fresh,
+          addon_selected: !!item.addon_selected && isPenAddonAvailable(fresh),
+        };
+      });
+    });
+  }, [products]);
+
   // TikTok Pixel — ViewContent for the shop/listing page itself (separate
   // from the single-product modal above). Fires once each time the shop
   // page is opened (not on every category filter click, to avoid event
@@ -202,17 +301,21 @@ export default function App() {
   };
 
   // Cart operations
-  const addToCart = (product: Product, quantity = 1) => {
+  const addToCart = (product: Product, quantity = 1, withPenAddon = false) => {
+    // The add-on is only honoured when it is actually available for this
+    // product, and a cart line can only ever carry it ONCE (adding the same
+    // product again never stacks a second $50).
+    const addon = withPenAddon && isPenAddonAvailable(product);
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
         return prev.map(item => 
           item.product.id === product.id 
-            ? { ...item, quantity: item.quantity + quantity }
+            ? { ...item, quantity: item.quantity + quantity, addon_selected: !!item.addon_selected || addon }
             : item
         );
       }
-      return [...prev, { product, quantity }];
+      return [...prev, { product, quantity, addon_selected: addon }];
     });
     setIsCartOpen(true);
 
@@ -249,6 +352,23 @@ export default function App() {
     setCart(prev => prev.map(item => 
       item.product.id === productId ? { ...item, quantity: qty } : item
     ));
+  };
+
+  // Turn the Disposable Pen add-on on/off for a cart line (cart drawer).
+  const toggleCartAddon = (productId: number, selected: boolean) => {
+    setCart(prev => prev.map(item =>
+      item.product.id === productId
+        ? { ...item, addon_selected: selected && isPenAddonAvailable(item.product) }
+        : item
+    ));
+  };
+
+  const cartLineHasAddon = (item: CartItem) => !!item.addon_selected && isPenAddonAvailable(item.product);
+
+  // Fixed $50.00 per selected line, added once — never multiplied by quantity,
+  // never discounted by a coupon, and not counted toward free shipping.
+  const getAddonsTotal = () => {
+    return cart.reduce((sum, item) => sum + (cartLineHasAddon(item) ? PEN_ADDON_PRICE : 0), 0);
   };
 
   const getCartTotal = () => {
@@ -292,7 +412,7 @@ export default function App() {
   };
 
   const getDiscountedSubtotal = () => {
-    return Math.max(0, getCartTotal() - getDiscountAmount());
+    return Math.max(0, getCartTotal() - getDiscountAmount()) + getAddonsTotal();
   };
 
   const handleApplyCoupon = async () => {
@@ -386,7 +506,9 @@ export default function App() {
       product_id: item.product.id,
       product_name: item.product.name,
       quantity: item.quantity,
-      price: item.product.is_discounted && item.product.discount_price ? item.product.discount_price : item.product.price
+      price: item.product.is_discounted && item.product.discount_price ? item.product.discount_price : item.product.price,
+      // Only a yes/no goes to the server; it decides the name and $50 price itself.
+      addon_selected: cartLineHasAddon(item)
     }));
 
     const payload = {
@@ -422,6 +544,13 @@ export default function App() {
           setCouponError(errData.error);
           setCheckoutStep('cart');
           alert(`${errData.error} It's been removed — please review your total and try again.`);
+        } else if (errData.error && errData.error.toLowerCase().includes('add-on')) {
+          // An admin turned the pen add-on off after it was added to the cart —
+          // reload the products (which also clears it from the cart) and let
+          // the customer review the corrected total.
+          alert(errData.error);
+          setCheckoutStep('cart');
+          fetchProducts();
         } else {
           alert('Failed to submit order request. Please review details and try again.');
         }
@@ -968,25 +1097,75 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Optional Add-on: Disposable Pen Preparation (admin ON/OFF per product) */}
+              {isPenAddonAvailable(selectedProduct) && (
+                <div className="bg-[#0a0a25]/60 border border-purple-500/30 rounded-xl p-4 space-y-2.5 relative z-10">
+                  <span className="inline-block text-[9px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/10 py-0.5 px-2 rounded border border-purple-500/30">
+                    Optional Add-On
+                  </span>
+                  <label className="flex items-start gap-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={addonChecked}
+                      onChange={(e) => setAddonChecked(e.target.checked)}
+                      className="accent-purple-500 h-4 w-4 mt-0.5 shrink-0 cursor-pointer"
+                    />
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-start justify-between gap-3">
+                        <span className="text-white text-xs font-semibold">{PEN_ADDON_NAME}</span>
+                        <span className="font-mono text-xs font-bold text-white shrink-0">+${PEN_ADDON_PRICE.toFixed(2)}</span>
+                      </span>
+                      <span className="block text-slate-400 text-[11px] leading-relaxed mt-1">{PEN_ADDON_DESCRIPTION}</span>
+                    </span>
+                  </label>
+                  {selectedProduct.addon_show_view_pen_button && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPenModal(true)}
+                      className="inline-flex items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      <Eye className="h-3 w-3" /> View Pen
+                    </button>
+                  )}
+                </div>
+              )}
+
               <div className="pt-4 border-t border-white/10 flex items-center justify-between relative z-10">
                 <div>
                   <span className="text-[10px] uppercase text-slate-500 tracking-wider">Acquisition Fee</span>
-                  <div className="flex items-baseline gap-1.5">
-                    {selectedProduct.is_discounted && selectedProduct.discount_price ? (
+                  {(() => {
+                    // Total updates immediately as the add-on is ticked/unticked
+                    // (the $50 is only ever included once).
+                    const addonOn = addonChecked && isPenAddonAvailable(selectedProduct);
+                    const unit = selectedProduct.is_discounted && selectedProduct.discount_price
+                      ? selectedProduct.discount_price
+                      : selectedProduct.price;
+                    return (
                       <>
-                        <span className="font-mono text-xl font-bold text-emerald-400">${selectedProduct.discount_price.toFixed(2)}</span>
-                        <span className="font-mono text-xs text-slate-500 line-through">${selectedProduct.price.toFixed(2)}</span>
+                        <div className="flex items-baseline gap-1.5">
+                          {addonOn ? (
+                            <span className="font-mono text-xl font-bold text-white">${(unit + PEN_ADDON_PRICE).toFixed(2)}</span>
+                          ) : selectedProduct.is_discounted && selectedProduct.discount_price ? (
+                            <>
+                              <span className="font-mono text-xl font-bold text-emerald-400">${selectedProduct.discount_price.toFixed(2)}</span>
+                              <span className="font-mono text-xs text-slate-500 line-through">${selectedProduct.price.toFixed(2)}</span>
+                            </>
+                          ) : (
+                            <span className="font-mono text-xl font-bold text-white">${selectedProduct.price.toFixed(2)}</span>
+                          )}
+                          <span className="text-[9px] text-slate-400 font-bold uppercase">AUD</span>
+                        </div>
+                        {addonOn && (
+                          <p className="text-[10px] text-purple-300 mt-0.5">Includes pen add-on +${PEN_ADDON_PRICE.toFixed(2)}</p>
+                        )}
                       </>
-                    ) : (
-                      <span className="font-mono text-xl font-bold text-white">${selectedProduct.price.toFixed(2)}</span>
-                    )}
-                    <span className="text-[9px] text-slate-400 font-bold uppercase">AUD</span>
-                  </div>
+                    );
+                  })()}
                 </div>
 
                 <button
                   onClick={() => {
-                    addToCart(selectedProduct, 1);
+                    addToCart(selectedProduct, 1, addonChecked);
                     setSelectedProduct(null);
                   }}
                   className="py-3 px-5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-purple-500/15 cursor-pointer"
@@ -996,6 +1175,36 @@ export default function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: View Pen (fixed image — closes via X button or outside click) */}
+      {selectedProduct && showPenModal && (
+        <div
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-fade-in"
+          onClick={() => setShowPenModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Disposable pen preview"
+        >
+          <div
+            className="relative bg-[#08081a] border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 p-3 sm:p-4 w-full max-w-sm sm:max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setShowPenModal(false)}
+              className="absolute top-3 right-3 z-10 p-2 bg-slate-950/80 border border-white/10 rounded-full text-slate-300 hover:text-white cursor-pointer"
+              aria-label="Close pen preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={PEN_IMAGE_SRC}
+              alt="Glow State disposable pen with 5 needle heads and 5 prep pads"
+              className="w-full max-h-[80vh] object-contain rounded-xl bg-black/40"
+            />
           </div>
         </div>
       )}
@@ -1029,7 +1238,8 @@ export default function App() {
                         ? item.product.discount_price 
                         : item.product.price;
                       return (
-                        <div key={item.product.id} className="bg-black/40 border border-white/10 rounded-xl p-3 flex justify-between gap-4 text-xs items-center">
+                        <div key={item.product.id} className="space-y-1.5">
+                        <div className="bg-black/40 border border-white/10 rounded-xl p-3 flex justify-between gap-4 text-xs items-center">
                           <img 
                             src={item.product.image_url} 
                             alt={item.product.name} 
@@ -1056,6 +1266,21 @@ export default function App() {
                               +
                             </button>
                           </div>
+                        </div>
+                        {isPenAddonAvailable(item.product) && (
+                          <label className="flex items-center justify-between gap-3 bg-purple-950/20 border border-purple-500/20 rounded-xl px-3 py-2 text-[11px] cursor-pointer select-none">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={cartLineHasAddon(item)}
+                                onChange={(e) => toggleCartAddon(item.product.id, e.target.checked)}
+                                className="accent-purple-500 h-3.5 w-3.5 shrink-0 cursor-pointer"
+                              />
+                              <span className="text-purple-200 truncate">{PEN_ADDON_NAME}</span>
+                            </span>
+                            <span className="font-mono font-bold text-purple-300 shrink-0">+${PEN_ADDON_PRICE.toFixed(2)}</span>
+                          </label>
+                        )}
                         </div>
                       );
                     })}
@@ -1089,6 +1314,12 @@ export default function App() {
                         <div className="flex justify-between items-center text-[11px] text-emerald-400">
                           <span>Discount</span>
                           <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
+                        </div>
+                      )}
+                      {getAddonsTotal() > 0 && (
+                        <div className="flex justify-between items-center text-[11px] text-purple-300">
+                          <span>{PEN_ADDON_NAME}</span>
+                          <span className="font-mono">+${getAddonsTotal().toFixed(2)} AUD</span>
                         </div>
                       )}
                       <div className="flex justify-between items-center font-mono font-bold text-white text-base">
@@ -1357,6 +1588,12 @@ export default function App() {
                           <span className="font-mono">-${getDiscountAmount().toFixed(2)} AUD</span>
                         </div>
                       )}
+                      {getAddonsTotal() > 0 && (
+                        <div className="flex justify-between text-purple-300">
+                          <span>{PEN_ADDON_NAME}</span>
+                          <span className="font-mono">+${getAddonsTotal().toFixed(2)} AUD</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-slate-400">
                         <span>Shipping</span>
                         <span className="font-mono">${getShippingFee().toFixed(2)} AUD</span>
@@ -1407,6 +1644,9 @@ export default function App() {
                   <div className="bg-[#050510]/80 border border-white/10 rounded-2xl p-4 text-left space-y-2 font-mono text-[11px]">
                     <p><strong className="text-slate-500">Order Reference:</strong> <span className="text-emerald-400">#00{placedOrder.id}</span></p>
                     <p><strong className="text-slate-500">Receipt Recipient:</strong> <span className="text-slate-300">{placedOrder.customer_email}</span></p>
+                    {Number(placedOrder.addons_total) > 0 && (
+                      <p><strong className="text-slate-500">Add-on:</strong> <span className="text-slate-300">{PEN_ADDON_NAME} (+${Number(placedOrder.addons_total).toFixed(2)})</span></p>
+                    )}
                     <p><strong className="text-slate-500">Total Amount:</strong> <span className="text-purple-400">${Number(placedOrder.total_amount).toFixed(2)} AUD</span></p>
                     <p><strong className="text-slate-500">Chosen route:</strong> <span className="text-slate-300 uppercase">{placedOrder.payment_method.replace('_', ' ')}</span></p>
                   </div>
