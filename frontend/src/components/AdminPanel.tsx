@@ -20,6 +20,9 @@ interface Product {
   category: string;
   stock: number;
   has_certificate?: boolean;
+  addon_enabled?: boolean;
+  addon_pen_in_customer_view?: boolean;
+  addon_show_view_pen_button?: boolean;
 }
 
 interface OrderItem {
@@ -27,6 +30,9 @@ interface OrderItem {
   product_name: string;
   quantity: number;
   price: number;
+  addon_selected?: boolean;
+  addon_name?: string;
+  addon_price?: number;
 }
 
 interface Order {
@@ -178,7 +184,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     is_discounted: false,
     discount_price: 0,
     category: 'Healing & Recovery',
-    stock: 20
+    stock: 20,
+    // Optional Add-ons (Disposable Pen) — ON/OFF only
+    addon_enabled: false,
+    addon_pen_in_customer_view: false,
+    addon_show_view_pen_button: false
   });
 
   // Product Certificate (COA) upload state — additive
@@ -397,7 +407,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       is_discounted: false,
       discount_price: 0,
       category: 'Healing & Recovery',
-      stock: 20
+      stock: 20,
+      addon_enabled: false,
+      addon_pen_in_customer_view: false,
+      addon_show_view_pen_button: false
     });
     setCertError('');
     setShowProductModal(true);
@@ -414,7 +427,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       is_discounted: prod.is_discounted,
       discount_price: prod.discount_price || 0,
       category: prod.category,
-      stock: prod.stock
+      stock: prod.stock,
+      addon_enabled: !!prod.addon_enabled,
+      addon_pen_in_customer_view: !!prod.addon_pen_in_customer_view,
+      addon_show_view_pen_button: !!prod.addon_show_view_pen_button
     });
     setCertError('');
     setShowProductModal(true);
@@ -1296,9 +1312,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                         <h4 className="text-slate-400 text-xs font-semibold uppercase tracking-wider">Requested Products</h4>
                         <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 divide-y divide-slate-800/60 max-h-40 overflow-y-auto">
                           {order.items?.map((item, idx) => (
-                            <div key={idx} className="py-2 flex justify-between text-xs gap-3">
-                              <span className="text-slate-300 font-medium">{item.product_name} <strong className="text-purple-400 font-bold">x{item.quantity}</strong></span>
-                              <span className="text-white font-mono font-semibold">${(Number(item.price) * item.quantity).toFixed(2)}</span>
+                            <div key={idx} className="py-2 text-xs space-y-1">
+                              <div className="flex justify-between gap-3">
+                                <span className="text-slate-300 font-medium">{item.product_name} <strong className="text-purple-400 font-bold">x{item.quantity}</strong></span>
+                                <span className="text-white font-mono font-semibold">${(Number(item.price) * item.quantity).toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between gap-3 text-[10px] text-slate-500">
+                                <span>Original price (each)</span>
+                                <span className="font-mono">${Number(item.price).toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between gap-3 text-[10px]">
+                                <span className="text-slate-500">Add-on selected: <strong className={item.addon_selected ? 'text-purple-300' : 'text-slate-400'}>{item.addon_selected ? 'Yes' : 'No'}</strong></span>
+                                {item.addon_selected && (
+                                  <span className="text-purple-300 font-mono">{item.addon_name} +${Number(item.addon_price || 0).toFixed(2)}</span>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -2042,6 +2070,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   className="accent-purple-500 h-4 w-4"
                 />
                 <label htmlFor="is_best_selling" className="text-slate-300 font-medium">Flag as "Best Selling" on Homepage</label>
+              </div>
+
+              {/* Optional Add-ons — ON/OFF switches ONLY. The add-on's name, price,
+                  description and image are fixed and cannot be edited here. */}
+              <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl p-4 space-y-3">
+                <h4 className="text-purple-300 font-semibold uppercase tracking-wider">Optional Add-ons</h4>
+                {([
+                  { key: 'addon_enabled', label: 'Enable Optional Add-on', hint: 'Master switch. When OFF, the add-on cannot be selected or charged.' },
+                  { key: 'addon_pen_in_customer_view', label: 'Add Pen to Customer View', hint: 'When OFF, the entire Optional Add-on section is hidden from customers.' },
+                  { key: 'addon_show_view_pen_button', label: 'Show View Pen Button', hint: 'When OFF, only the "View Pen" button is hidden.' },
+                ] as const).map(({ key, label, hint }) => {
+                  const on = prodForm[key];
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-slate-200 font-medium">{label}</p>
+                        <p className="text-slate-500 text-[10px] leading-snug">{hint}</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        onClick={() => setProdForm({ ...prodForm, [key]: !on })}
+                        className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors cursor-pointer ${
+                          on ? 'bg-purple-600 border-purple-400' : 'bg-slate-800 border-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 h-[18px] w-[18px] rounded-full bg-white transition-transform ${
+                            on ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  );
+                })}
+                <p className="text-slate-500 text-[10px]">
+                  Add-on: Disposable Pen Preparation — fixed at $50.00 AUD (not editable).
+                </p>
               </div>
 
               <div className="flex gap-3 justify-end border-t border-slate-800 pt-4 mt-6">
