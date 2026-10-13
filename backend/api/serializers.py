@@ -16,6 +16,7 @@ class ProductSerializer(serializers.ModelSerializer):
             "id", "name", "description", "price", "image_url",
             "is_best_selling", "is_discounted", "discount_price",
             "category", "stock", "created_at", "has_certificate",
+            "addon_enabled", "addon_pen_in_customer_view", "addon_show_view_pen_button",
         ]
         read_only_fields = ["id", "created_at", "has_certificate"]
 
@@ -26,11 +27,17 @@ class ProductSerializer(serializers.ModelSerializer):
 class OrderItemSerializer(serializers.ModelSerializer):
     product_id = serializers.IntegerField(source="product_id_snapshot")
     price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    addon_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, read_only=True
+    )
 
     class Meta:
         model = OrderItem
-        fields = ["id", "order", "product_id", "product_name", "quantity", "price"]
-        read_only_fields = ["id", "order"]
+        fields = [
+            "id", "order", "product_id", "product_name", "quantity", "price",
+            "addon_selected", "addon_name", "addon_price",
+        ]
+        read_only_fields = ["id", "order", "addon_selected", "addon_name", "addon_price"]
 
 
 class OrderSerializer(serializers.ModelSerializer):
