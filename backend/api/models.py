@@ -1,5 +1,6 @@
 import secrets
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import models
 from django.utils import timezone
@@ -31,6 +32,15 @@ class AdminSession(models.Model):
         return timezone.now() < self.expires_at
 
 
+# --- Optional add-on: Disposable Pen Preparation ---------------------------
+# The name, description and price are FIXED in code on purpose. Admins can only
+# switch the add-on on/off per product (see the three flags on Product); they
+# can never change what it is called or what it costs. The backend always
+# charges this constant and never trusts a price sent by the browser.
+PEN_ADDON_NAME = "Disposable Pen Preparation"
+PEN_ADDON_PRICE = Decimal("50.00")
+
+
 class Product(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField()
@@ -52,6 +62,22 @@ class Product(models.Model):
     certificate_content_type = models.CharField(max_length=100, null=True, blank=True)
     certificate_uploaded_at = models.DateTimeField(null=True, blank=True)
 
+    # --- Optional Add-ons (Disposable Pen) — admin ON/OFF only ------------
+    # addon_enabled              master switch: when OFF the add-on cannot be
+    #                            selected or charged for this product.
+    # addon_pen_in_customer_view when OFF the whole "Optional Add-on" section
+    #                            is hidden from the customer page.
+    # addon_show_view_pen_button when OFF only the "View Pen" button is hidden.
+    # All default to OFF so no existing product changes until an admin opts in.
+    addon_enabled = models.BooleanField(default=False)
+    addon_pen_in_customer_view = models.BooleanField(default=False)
+    addon_show_view_pen_button = models.BooleanField(default=False)
+
+    @property
+    def pen_addon_available(self):
+        """True only when the add-on can actually be selected AND charged."""
+        return bool(self.addon_enabled and self.addon_pen_in_customer_view)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -66,6 +92,9 @@ class Product(models.Model):
             "stock": self.stock,
             "created_at": self.created_at.isoformat(),
             "has_certificate": bool(self.certificate_data),
+            "addon_enabled": self.addon_enabled,
+            "addon_pen_in_customer_view": self.addon_pen_in_customer_view,
+            "addon_show_view_pen_button": self.addon_show_view_pen_button,
         }
 
 
@@ -256,7 +285,11 @@ class Order(models.Model):
             "created_at": self.created_at.isoformat(),
         }
         if include_items:
-            data["items"] = [item.to_dict() for item in self.items.all()]
+            items = list(self.items.all())
+            data["items"] = [item.to_dict() for item in items]
+            data["addons_total"] = float(sum(
+                (i.addon_price for i in items if i.addon_selected), Decimal("0")
+            ))
         return data
 
 
@@ -268,6 +301,14 @@ class OrderItem(models.Model):
     quantity = models.IntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
+    # --- Optional add-on snapshot (Disposable Pen) ------------------------
+    # Saved at order time so past orders keep showing exactly what the
+    # customer chose and paid, even if the product's add-on is later turned
+    # off. `price` above stays the ORIGINAL product price (add-on is separate).
+    addon_selected = models.BooleanField(default=False)
+    addon_name = models.CharField(max_length=255, blank=True, default="")
+    addon_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -276,6 +317,9 @@ class OrderItem(models.Model):
             "product_name": self.product_name,
             "quantity": self.quantity,
             "price": float(self.price),
+            "addon_selected": self.addon_selected,
+            "addon_name": self.addon_name,
+            "addon_price": float(self.addon_price),
         }
 
 
