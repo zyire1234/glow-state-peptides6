@@ -22,6 +22,7 @@ from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnl
 from .email_utils import send_branded_email
 from . import campaigns
 from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon, Archive
+from .models import PEN_ADDON_NAME, PEN_ADDON_PRICE
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
 
@@ -277,6 +278,9 @@ def products_collection(request):
         discount_price=data.get("discount_price") or None,
         category=data["category"],
         stock=data["stock"],
+        addon_enabled=bool(data.get("addon_enabled", False)),
+        addon_pen_in_customer_view=bool(data.get("addon_pen_in_customer_view", False)),
+        addon_show_view_pen_button=bool(data.get("addon_show_view_pen_button", False)),
     )
     log_activity("product_added", f"Admin added new product: {product.name}")
     return JsonResponse(product.to_dict(), status=201)
@@ -312,6 +316,11 @@ def product_detail(request, product_id):
             product.is_discounted = bool(data["is_discounted"])
         if "discount_price" in data:
             product.discount_price = data["discount_price"] or None
+        # Optional add-on switches (ON/OFF only — the add-on's name, price,
+        # description and image are fixed in code and cannot be edited here).
+        for flag in ("addon_enabled", "addon_pen_in_customer_view", "addon_show_view_pen_button"):
+            if flag in data and data[flag] is not None:
+                setattr(product, flag, bool(data[flag]))
         product.save()
         log_activity("product_updated", f"Admin updated product details: {product.name}")
         return JsonResponse(product.to_dict())
@@ -616,7 +625,7 @@ def _order_items_signature(order):
     (product_id, quantity) pairs. Two orders sharing a signature contain
     exactly the same products in exactly the same quantities."""
     return frozenset(
-        (item.product_id_snapshot, item.quantity) for item in order.items.all()
+        (item.product_id_snapshot, item.quantity, item.addon_selected) for item in order.items.all()
     )
 
 
@@ -703,7 +712,27 @@ def orders_collection(request):
             if not product or qty <= 0:
                 return JsonResponse({"error": "A product in your cart is no longer available. Please refresh and try again."}, status=400)
             unit = product.discount_price if (product.is_discounted and product.discount_price) else product.price
-            priced_items.append({"product_id": pid, "quantity": qty, "price": float(unit), "product_name": product.name})
+
+            # Optional Disposable Pen add-on. The browser only says "yes/no";
+            # the name and the $50.00 price always come from the server, and
+            # the add-on is only accepted if the admin currently has it
+            # switched on for this product. It is charged ONCE per cart line
+            # (not multiplied by quantity), and never discounted by coupons.
+            addon_selected = bool(item.get("addon_selected", False))
+            if addon_selected and not product.pen_addon_available:
+                return JsonResponse(
+                    {"error": f"The Disposable Pen add-on is no longer available for {product.name}. Please refresh the page and review your cart."},
+                    status=400,
+                )
+            priced_items.append({
+                "product_id": pid,
+                "quantity": qty,
+                "price": float(unit),
+                "product_name": product.name,
+                "addon_selected": addon_selected,
+                "addon_name": PEN_ADDON_NAME if addon_selected else "",
+                "addon_price": PEN_ADDON_PRICE if addon_selected else Decimal("0.00"),
+            })
         items = priced_items
 
         coupon_code = (data.get("coupon_code") or "").strip().upper()
@@ -717,12 +746,16 @@ def orders_collection(request):
 
         subtotal = sum(Decimal(str(i["price"])) * i["quantity"] for i in items)
         discounted = max(Decimal("0"), subtotal - Decimal(str(discount_amount or 0)))
+        # Add-ons are added AFTER the coupon (coupons never discount them) and
+        # do not count toward the free-shipping threshold, which stays based on
+        # the product subtotal exactly as before.
+        addons_total = sum((i["addon_price"] for i in items), Decimal("0.00"))
         shipping = Decimal("0") if subtotal > Decimal("160") else Decimal("10")
         paypal_fee = (
-            (discounted + shipping) * Decimal("0.03")
+            (discounted + addons_total + shipping) * Decimal("0.03")
             if data.get("payment_method") == "paypal_invoice" else Decimal("0")
         )
-        server_total = (discounted + shipping + paypal_fee).quantize(Decimal("0.01"))
+        server_total = (discounted + addons_total + shipping + paypal_fee).quantize(Decimal("0.01"))
         try:
             client_total = Decimal(str(data["total_amount"]))
         except Exception:
@@ -767,6 +800,9 @@ def orders_collection(request):
                     product_name=item.get("product_name", ""),
                     quantity=int(item.get("quantity", 0)),
                     price=item.get("price", 0),
+                    addon_selected=item.get("addon_selected", False),
+                    addon_name=item.get("addon_name", ""),
+                    addon_price=item.get("addon_price", Decimal("0.00")),
                 )
                 if product:
                     product.stock = max(0, product.stock - int(item.get("quantity", 0)))
@@ -1481,6 +1517,9 @@ def archive_restore(request, archive_id):
                         product_name=item["product_name"],
                         quantity=item["quantity"],
                         price=item["price"],
+                        addon_selected=item.get("addon_selected", False),
+                        addon_name=item.get("addon_name", ""),
+                        addon_price=item.get("addon_price", 0),
                     )
                 restored_ids.append(rec["id"])
         else:  # "activities"
