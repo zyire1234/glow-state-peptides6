@@ -406,6 +406,10 @@ class PaymentDetails(models.Model):
         default=True,
         help_text="Untick to hide PayPal from the public checkout (e.g. while PayPal has an issue).",
     )
+    pen_banner_enabled = models.BooleanField(
+        default=True,
+        help_text="Untick to hide the 'Pre-filled Pen Option' banner on the homepage (e.g. when pens are out of stock).",
+    )
     payid_number = models.CharField(
         max_length=40,
         default="0491186505",
@@ -445,6 +449,7 @@ class PaymentDetails(models.Model):
             "paypal_email": self.paypal_email,
             "paypal_client_id": self.paypal_client_id,
             "paypal_enabled": self.paypal_enabled,
+            "pen_banner_enabled": self.pen_banner_enabled,
             "payid_number": self.payid_number,
             "payid_name": self.payid_name,
         }
