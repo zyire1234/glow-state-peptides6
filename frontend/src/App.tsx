@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
-  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink, Eye, CalendarDays, Info
+  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink, CalendarDays, Info
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
@@ -28,7 +28,6 @@ interface Product {
   // Optional add-on (Disposable Pen) — admin ON/OFF switches only.
   addon_enabled?: boolean;
   addon_pen_in_customer_view?: boolean;
-  addon_show_view_pen_button?: boolean;
 }
 
 interface CartItem {
@@ -45,7 +44,6 @@ interface CartItem {
 const PEN_ADDON_NAME = 'Disposable Pen Preparation';
 const PEN_ADDON_DESCRIPTION = 'Have your product prepared in a disposable pen for ease of use. Includes 5 needle heads and 5 prep pads.';
 const PEN_ADDON_PRICE = 50;
-const PEN_IMAGE_SRC = '/glow-state-pen.jpg'; // served from frontend/public
 const CART_STORAGE_KEY = 'glowstate_cart_v1';
 
 // Products that should NOT show the "Compound Profile Data" box in their popup.
@@ -85,9 +83,8 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
 
-  // Optional Disposable Pen add-on (product modal) + "View Pen" image modal
+  // Optional Disposable Pen add-on checkbox (product modal)
   const [addonChecked, setAddonChecked] = useState<boolean>(false);
-  const [showPenModal, setShowPenModal] = useState<boolean>(false);
   const cartHydratedRef = useRef(false);
 
   // Filter category state
@@ -168,20 +165,10 @@ export default function App() {
     });
   }, [selectedProduct]);
 
-  // Every time a product modal opens/closes, the add-on checkbox starts
-  // unchecked and any open "View Pen" image is closed.
+  // Every time a product modal opens/closes, the add-on checkbox starts unchecked.
   useEffect(() => {
     setAddonChecked(false);
-    setShowPenModal(false);
   }, [selectedProduct?.id]);
-
-  // Close the "View Pen" image with the Escape key.
-  useEffect(() => {
-    if (!showPenModal) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPenModal(false); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showPenModal]);
 
   // Close the pen shipping-info popup with the Escape key.
   useEffect(() => {
@@ -1191,15 +1178,6 @@ export default function App() {
                       <span className="block text-slate-400 text-[11px] leading-relaxed mt-1">{PEN_ADDON_DESCRIPTION}</span>
                     </span>
                   </label>
-                  {selectedProduct.addon_show_view_pen_button && (
-                    <button
-                      type="button"
-                      onClick={() => setShowPenModal(true)}
-                      className="inline-flex items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
-                    >
-                      <Eye className="h-3 w-3" /> View Pen
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -1324,36 +1302,6 @@ export default function App() {
                 Got it
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: View Pen (fixed image — closes via X button or outside click) */}
-      {selectedProduct && showPenModal && (
-        <div
-          className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-fade-in"
-          onClick={() => setShowPenModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Disposable pen preview"
-        >
-          <div
-            className="relative bg-[#08081a] border border-purple-500/30 rounded-2xl shadow-2xl shadow-purple-500/10 p-3 sm:p-4 w-full max-w-sm sm:max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setShowPenModal(false)}
-              className="absolute top-3 right-3 z-10 p-2 bg-slate-950/80 border border-white/10 rounded-full text-slate-300 hover:text-white cursor-pointer"
-              aria-label="Close pen preview"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <img
-              src={PEN_IMAGE_SRC}
-              alt="Glow State disposable pen with 5 needle heads and 5 prep pads"
-              className="w-full max-h-[80vh] object-contain rounded-xl bg-black/40"
-            />
           </div>
         </div>
       )}
