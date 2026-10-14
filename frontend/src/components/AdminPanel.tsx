@@ -22,7 +22,6 @@ interface Product {
   has_certificate?: boolean;
   addon_enabled?: boolean;
   addon_pen_in_customer_view?: boolean;
-  addon_show_view_pen_button?: boolean;
 }
 
 interface OrderItem {
@@ -187,8 +186,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
     stock: 20,
     // Optional Add-ons (Disposable Pen) — ON/OFF only
     addon_enabled: false,
-    addon_pen_in_customer_view: false,
-    addon_show_view_pen_button: false
+    addon_pen_in_customer_view: false
   });
 
   // Product Certificate (COA) upload state — additive
@@ -446,8 +444,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       category: 'Healing & Recovery',
       stock: 20,
       addon_enabled: false,
-      addon_pen_in_customer_view: false,
-      addon_show_view_pen_button: false
+      addon_pen_in_customer_view: false
     });
     setCertError('');
     setShowProductModal(true);
@@ -466,8 +463,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       category: prod.category,
       stock: prod.stock,
       addon_enabled: !!prod.addon_enabled,
-      addon_pen_in_customer_view: !!prod.addon_pen_in_customer_view,
-      addon_show_view_pen_button: !!prod.addon_show_view_pen_button
+      addon_pen_in_customer_view: !!prod.addon_pen_in_customer_view
     });
     setCertError('');
     setShowProductModal(true);
@@ -2157,7 +2153,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                 {([
                   { key: 'addon_enabled', label: 'Enable Optional Add-on', hint: 'Master switch. When OFF, the add-on cannot be selected or charged.' },
                   { key: 'addon_pen_in_customer_view', label: 'Add Pen to Customer View', hint: 'When OFF, the entire Optional Add-on section is hidden from customers.' },
-                  { key: 'addon_show_view_pen_button', label: 'Show View Pen Button', hint: 'When OFF, only the "View Pen" button is hidden.' },
                 ] as const).map(({ key, label, hint }) => {
                   const on = prodForm[key];
                   return (
