@@ -205,6 +205,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
 
   // PayPal on/off switch (public checkout)
   const [paypalEnabled, setPaypalEnabled] = useState<boolean | null>(null);
+  // Homepage "Pre-filled Pen Option" banner on/off
+  const [penBannerEnabled, setPenBannerEnabled] = useState<boolean | null>(null);
+  const [penBannerBusy, setPenBannerBusy] = useState(false);
+  const [penBannerMessage, setPenBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [paypalBusy, setPaypalBusy] = useState<boolean>(false);
   const [paypalMessage, setPaypalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -278,6 +282,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         if (res.ok) {
           const d = await res.json();
           setPaypalEnabled(d.paypal_enabled !== false);
+          setPenBannerEnabled(d.pen_banner_enabled !== false);
         }
       } else if (activeTab === 'coupons') {
         const [cRes, pRes] = await Promise.all([
@@ -354,6 +359,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       setPaypalMessage({ type: 'error', text: 'Network error. Please try again.' });
     } finally {
       setPaypalBusy(false);
+    }
+  };
+
+  const handleTogglePenBanner = async () => {
+    if (penBannerEnabled === null || penBannerBusy) return;
+    const next = !penBannerEnabled;
+    setPenBannerBusy(true);
+    setPenBannerMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/payment-details/pen-banner-toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ enabled: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
+      if (!res.ok) {
+        setPenBannerMessage({ type: 'error', text: data.error || 'Could not update the pen banner. Please try again.' });
+      } else {
+        setPenBannerEnabled(data.pen_banner_enabled !== false);
+        setPenBannerMessage({
+          type: 'success',
+          text: next ? 'Pen banner is now ON and visible on the homepage.' : 'Pen banner is now OFF and hidden from the homepage.',
+        });
+      }
+    } catch {
+      setPenBannerMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } finally {
+      setPenBannerBusy(false);
     }
   };
 
@@ -1814,6 +1851,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     }`}
                   >
                     {paypalBusy ? 'Saving…' : paypalEnabled ? 'Hide PayPal' : 'Show PayPal'}
+                  </button>
+                </div>
+              </div>
+
+              <div className={`${PANEL} p-6 space-y-4`}>
+                <div>
+                  <h3 className="text-white font-semibold text-sm">Homepage Pen Banner</h3>
+                  <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                    Out of pens? Turn the "Pre-Filled Pen Option" banner OFF to hide it from the homepage.
+                    Turn it back ON when pens are available again.
+                  </p>
+                </div>
+                {penBannerMessage && (
+                  <div className={`rounded-xl p-3 text-xs ${
+                    penBannerMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                  }`}>
+                    {penBannerMessage.text}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4">
+                  <span className={`text-xs font-bold uppercase tracking-wider ${penBannerEnabled ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {penBannerEnabled === null ? 'Loading…' : penBannerEnabled ? 'Pen banner is ON (visible)' : 'Pen banner is OFF (hidden)'}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={!!penBannerEnabled}
+                    aria-label="Show pen banner on homepage"
+                    onClick={handleTogglePenBanner}
+                    disabled={penBannerEnabled === null || penBannerBusy}
+                    className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors cursor-pointer disabled:opacity-50 ${
+                      penBannerEnabled ? 'bg-purple-600 border-purple-400' : 'bg-slate-800 border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                        penBannerEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
                   </button>
                 </div>
               </div>
