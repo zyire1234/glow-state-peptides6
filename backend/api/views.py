@@ -1092,6 +1092,26 @@ def paypal_toggle(request):
     return JsonResponse(details.to_dict())
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+@require_admin
+def pen_banner_toggle(request):
+    """Admin-only: show/hide the 'Pre-filled Pen Option' banner on the homepage.
+    Body: {"enabled": true|false}"""
+    data = _body(request)
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return JsonResponse({"error": "'enabled' must be true or false."}, status=400)
+    details = PaymentDetails.load()
+    details.pen_banner_enabled = enabled
+    details.save(update_fields=["pen_banner_enabled"])
+    log_activity(
+        "pen_banner_toggled",
+        f"Admin {'SHOWED' if enabled else 'HID'} the Pre-filled Pen banner on the homepage.",
+    )
+    return JsonResponse(details.to_dict())
+
+
 # ---------------------------------------------------------------------------
 # 11. PayPal Checkout (real PayPal Orders v2 API — not a placeholder)
 # ---------------------------------------------------------------------------
