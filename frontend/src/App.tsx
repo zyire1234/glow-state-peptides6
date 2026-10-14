@@ -703,7 +703,7 @@ export default function App() {
                     type="button"
                     onClick={() => setShowPenInfoModal(true)}
                     aria-label="Pre-filled pen option — view shipping information"
-                    className="group relative mt-8 w-full max-w-3xl min-h-[132px] sm:min-h-[150px] overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
+                    className="group relative mt-8 w-full max-w-3xl lg:max-w-none min-h-[132px] sm:min-h-[150px] lg:min-h-[210px] overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
                     style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%)' }}
                   >
                     {/* Pen photo, faded into the card on its left edge */}
@@ -717,18 +717,18 @@ export default function App() {
                         maskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
                       }}
                     />
-                    <div className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6 min-h-[inherit]">
+                    <div className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6 lg:px-10 lg:py-8 min-h-[inherit]">
                       <div className="min-w-0">
                         <span className="inline-block rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-500 px-3 py-1 text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-purple-500/30">
                           New
                         </span>
-                        <h3 className="font-display mt-2 text-xl sm:text-2xl lg:text-3xl font-extrabold uppercase leading-tight tracking-tight text-[#1b1650]">
+                        <h3 className="font-display mt-2 text-xl sm:text-2xl lg:text-4xl font-extrabold uppercase leading-tight tracking-tight text-[#1b1650]">
                           Pre-Filled Pen Option
                         </h3>
-                        <p className="mt-1 text-xs sm:text-sm font-semibold text-[#2a2759]">Available for select products.</p>
-                        <p className="text-xs sm:text-sm font-medium text-[#6f6a99]">QLD &amp; NSW customers only.</p>
+                        <p className="mt-1 text-xs sm:text-sm lg:text-base font-semibold text-[#2a2759]">Available for select products.</p>
+                        <p className="text-xs sm:text-sm lg:text-base font-medium text-[#6f6a99]">QLD &amp; NSW customers only.</p>
                       </div>
-                      <span className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-600/40 transition-transform duration-300 group-hover:translate-x-1">
+                      <span className="flex h-11 w-11 sm:h-12 sm:w-12 lg:h-14 lg:w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-600/40 transition-transform duration-300 group-hover:translate-x-1">
                         <ArrowRight className="h-5 w-5" />
                       </span>
                     </div>
@@ -736,7 +736,7 @@ export default function App() {
                 )}
 
                 {/* Trust Badges banner */}
-                <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl text-xs text-slate-400">
+                <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl lg:max-w-none text-xs text-slate-400">
                   <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-16 h-16 bg-purple-600/5 blur-xl group-hover:bg-purple-600/10 transition-colors duration-300" />
                     <div className="h-8 w-8 bg-purple-500/10 rounded-lg flex items-center justify-center text-purple-400 shrink-0">
