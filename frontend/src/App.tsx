@@ -711,15 +711,15 @@ export default function App() {
                     type="button"
                     onClick={() => setShowPenInfoModal(true)}
                     aria-label="Pre-filled pen option — view shipping information"
-                    className="group relative mt-8 w-full max-w-3xl lg:max-w-5xl min-h-[132px] sm:min-h-[150px] lg:min-h-[190px] overflow-hidden rounded-2xl border border-purple-300/50 ring-1 ring-inset ring-white/50 text-left shadow-[0_12px_40px_-12px_rgba(147,51,234,0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
-                    style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%)' }}
+                    className="group relative mt-8 w-full max-w-3xl lg:max-w-5xl min-h-[132px] sm:min-h-[150px] lg:min-h-[190px] overflow-hidden rounded-2xl border-[1.5px] border-transparent text-left shadow-[0_12px_40px_-12px_rgba(147,51,234,0.6)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
+                    style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%) padding-box, linear-gradient(100deg, #d946ef, #8b5cf6 50%, #3b82f6) border-box' }}
                   >
                     {/* Pen photo, faded into the card on its left edge */}
                     <img
                       src="/pen-banner.jpg"
                       alt=""
                       aria-hidden="true"
-                      className="pointer-events-none absolute right-0 top-0 h-full w-auto max-w-[68%] sm:max-w-[60%] lg:w-[46%] lg:max-w-none object-cover object-left transition-transform duration-500 group-hover:scale-105"
+                      className="pointer-events-none absolute right-0 top-0 h-full w-auto max-w-[68%] sm:max-w-[60%] lg:w-[46%] lg:max-w-none object-cover object-right transition-transform duration-500 group-hover:scale-105"
                       style={{
                         WebkitMaskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
                         maskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
