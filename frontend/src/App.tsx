@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingBag, Calculator, ClipboardList, Truck, Mail, 
-  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink, Eye
+  MapPin, HelpCircle, Check, X, ArrowRight, UserCheck, ChevronRight, ShoppingCart, ExternalLink, Eye, CalendarDays, Info
 } from 'lucide-react';
 import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
@@ -61,6 +61,7 @@ interface PaymentDetails {
   paypal_email: string;
   paypal_client_id: string;
   paypal_enabled?: boolean;
+  pen_banner_enabled?: boolean;
   payid_number: string;
   payid_name: string;
 }
@@ -107,6 +108,10 @@ export default function App() {
   const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   // PayPal can be switched off from the admin panel; treat "unknown" as enabled.
   const paypalEnabled = paymentDetails?.paypal_enabled !== false;
+  // Homepage "Pre-filled Pen Option" banner — admin can switch it off (e.g. out of stock).
+  // Only shown once settings have loaded, so a hidden banner never flashes on screen.
+  const penBannerVisible = paymentDetails !== null && paymentDetails.pen_banner_enabled !== false;
+  const [showPenInfoModal, setShowPenInfoModal] = useState<boolean>(false);
   useEffect(() => {
     if (!paypalEnabled && paymentMethod === 'paypal_invoice') setPaymentMethod('bank_transfer');
   }, [paypalEnabled, paymentMethod]);
@@ -169,6 +174,14 @@ export default function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showPenModal]);
+
+  // Close the pen shipping-info popup with the Escape key.
+  useEffect(() => {
+    if (!showPenInfoModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowPenInfoModal(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPenInfoModal]);
 
   // Cart persistence: restore the cart (including each line's add-on choice)
   // after a page refresh, once the real products have loaded so every item is
@@ -684,6 +697,44 @@ export default function App() {
                   </p>
                 </div>
 
+                {/* Pre-filled Pen Option banner (admin can hide it from Admin → Settings) */}
+                {penBannerVisible && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPenInfoModal(true)}
+                    aria-label="Pre-filled pen option — view shipping information"
+                    className="group relative mt-8 w-full max-w-3xl overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
+                    style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%)' }}
+                  >
+                    {/* Pen photo, faded into the card on its left edge */}
+                    <img
+                      src="/pen-banner.jpg"
+                      alt=""
+                      aria-hidden="true"
+                      className="pointer-events-none absolute right-0 top-0 h-full w-[62%] sm:w-[52%] object-cover object-left transition-transform duration-500 group-hover:scale-105"
+                      style={{
+                        WebkitMaskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
+                        maskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
+                      }}
+                    />
+                    <div className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6">
+                      <div className="min-w-0">
+                        <span className="inline-block rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-500 px-3 py-1 text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-purple-500/30">
+                          New
+                        </span>
+                        <h3 className="font-display mt-2 text-xl sm:text-3xl font-extrabold uppercase leading-tight tracking-tight text-[#1b1650]">
+                          Pre-Filled Pen Option
+                        </h3>
+                        <p className="mt-1 text-xs sm:text-sm font-semibold text-[#2a2759]">Available for select products.</p>
+                        <p className="text-xs sm:text-sm font-medium text-[#6f6a99]">QLD &amp; NSW customers only.</p>
+                      </div>
+                      <span className="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-600/40 transition-transform duration-300 group-hover:translate-x-1">
+                        <ArrowRight className="h-5 w-5" />
+                      </span>
+                    </div>
+                  </button>
+                )}
+
                 {/* Trust Badges banner */}
                 <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl text-xs text-slate-400">
                   <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
@@ -1174,6 +1225,82 @@ export default function App() {
                   <span>Add to Cart</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Disposable Pen – Shipping Information (opened from the homepage banner) */}
+      {showPenInfoModal && (
+        <div
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[60] animate-fade-in"
+          onClick={() => setShowPenInfoModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pen-info-title"
+        >
+          <div
+            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-purple-500/30 bg-gradient-to-b from-[#12112e] to-[#08081a] shadow-2xl shadow-purple-500/20"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-purple-600 via-fuchsia-500 to-blue-500" />
+            <button
+              type="button"
+              onClick={() => setShowPenInfoModal(false)}
+              className="absolute top-4 right-4 p-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-slate-300 hover:text-white transition-colors cursor-pointer"
+              aria-label="Close shipping information"
+            >
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="p-6 sm:p-8 space-y-5">
+              <div className="flex items-start gap-3 pr-10">
+                <div className="h-11 w-11 shrink-0 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400">Pre-Filled Pen Option</span>
+                  <h3 id="pen-info-title" className="font-display text-xl sm:text-2xl font-extrabold text-white leading-tight">
+                    Disposable Pen – Shipping Information
+                  </h3>
+                </div>
+              </div>
+
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Disposable pens are available for selected compounds only and are prepared once an order is completed.
+              </p>
+
+              <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-purple-200">
+                  <CalendarDays className="h-4 w-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Dispatch</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {['Monday', 'Tuesday', 'Wednesday'].map(day => (
+                    <span key={day} className="rounded-full bg-gradient-to-r from-purple-600 to-violet-600 px-3.5 py-1 text-xs font-bold text-white shadow-md shadow-purple-600/30">
+                      {day}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  Dispatch: Monday–Wednesday only, to ensure prepared pens arrive as quickly and efficiently as possible.
+                </p>
+              </div>
+
+              <div className="flex gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
+                <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
+                <p className="text-sm text-slate-300 leading-relaxed">
+                  <strong className="text-white">Please note:</strong> Orders placed outside dispatch days will be shipped on the next available dispatch day. 💜
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowPenInfoModal(false)}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 py-3 text-sm font-bold text-white shadow-lg shadow-purple-600/20 transition-all cursor-pointer"
+              >
+                Got it
+              </button>
             </div>
           </div>
         </div>
