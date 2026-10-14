@@ -48,6 +48,14 @@ const PEN_ADDON_PRICE = 50;
 const PEN_IMAGE_SRC = '/glow-state-pen.jpg'; // served from frontend/public
 const CART_STORAGE_KEY = 'glowstate_cart_v1';
 
+// Products that should NOT show the "Compound Profile Data" box in their popup.
+// Names are compared ignoring case and spaces, so "Lemon Bottle 10ml" and
+// "LEMON BOTTLE 10 ML" both match. Add more names here to hide it elsewhere.
+const HIDE_COMPOUND_PROFILE_FOR = ['lemon bottle 10ml'];
+const normalizeProductName = (name: string) => name.toLowerCase().replace(/\s+/g, '');
+const shouldHideCompoundProfile = (p?: Product | null) =>
+  !!p && HIDE_COMPOUND_PROFILE_FOR.some(n => normalizeProductName(n) === normalizeProductName(p.name));
+
 // The add-on can only be shown, selected or charged when the admin has it
 // switched on for the product AND set to appear in the customer view.
 const isPenAddonAvailable = (p?: Product | null) =>
@@ -1125,7 +1133,20 @@ export default function App() {
                 {selectedProduct.description}
               </p>
 
-              {/* Research Specification Data */}
+              {/* Research Specification Data (hidden for selected products, e.g. Lemon Bottle 10ml) */}
+              {shouldHideCompoundProfile(selectedProduct) ? (
+                // Keep the COA link available if this product has a certificate uploaded.
+                selectedProduct.has_certificate && (
+                  <a
+                    href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="relative z-10 inline-flex w-fit items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
+                  >
+                    COA <ExternalLink className="h-3 w-3" />
+                  </a>
+                )
+              ) : (
               <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-4 space-y-2 relative z-10">
                 <h4 className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compound Profile Data</h4>
                 <div className="grid grid-cols-2 gap-3 text-[11px]">
@@ -1147,6 +1168,7 @@ export default function App() {
                   <p className="text-slate-400">Reconstitution Sol: <strong className="text-white">Bacteriostatic Water</strong></p>
                 </div>
               </div>
+              )}
 
               {/* Optional Add-on: Disposable Pen Preparation (admin ON/OFF per product) */}
               {isPenAddonAvailable(selectedProduct) && (
