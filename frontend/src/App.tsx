@@ -711,7 +711,7 @@ export default function App() {
                     type="button"
                     onClick={() => setShowPenInfoModal(true)}
                     aria-label="Pre-filled pen option — view shipping information"
-                    className="group relative mt-8 w-full max-w-3xl lg:max-w-none min-h-[132px] sm:min-h-[150px] lg:min-h-[210px] overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
+                    className="group relative mt-8 w-full max-w-3xl lg:max-w-5xl min-h-[132px] sm:min-h-[150px] lg:min-h-[190px] overflow-hidden rounded-2xl border border-purple-300/50 ring-1 ring-inset ring-white/50 text-left shadow-[0_12px_40px_-12px_rgba(147,51,234,0.55)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
                     style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%)' }}
                   >
                     {/* Pen photo, faded into the card on its left edge */}
@@ -719,7 +719,7 @@ export default function App() {
                       src="/pen-banner.jpg"
                       alt=""
                       aria-hidden="true"
-                      className="pointer-events-none absolute right-0 top-0 h-full w-auto max-w-[68%] sm:max-w-[60%] object-cover object-left transition-transform duration-500 group-hover:scale-105"
+                      className="pointer-events-none absolute right-0 top-0 h-full w-auto max-w-[68%] sm:max-w-[60%] lg:w-[46%] lg:max-w-none object-cover object-left transition-transform duration-500 group-hover:scale-105"
                       style={{
                         WebkitMaskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
                         maskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
@@ -744,7 +744,7 @@ export default function App() {
                 )}
 
                 {/* Trust Badges banner */}
-                <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl lg:max-w-none text-xs text-slate-400">
+                <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl lg:max-w-5xl text-xs text-slate-400">
                   <div className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-center gap-3 backdrop-blur-sm shadow-xl relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-16 h-16 bg-purple-600/5 blur-xl group-hover:bg-purple-600/10 transition-colors duration-300" />
                     <div className="h-8 w-8 bg-purple-500/10 rounded-lg flex items-center justify-center text-purple-400 shrink-0">
