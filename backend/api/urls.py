@@ -56,6 +56,7 @@ urlpatterns = [
     # Payment details (bank transfer + PayPal), dynamic from backend
     path("payment-details", views.payment_details),
     path("payment-details/paypal-toggle", views.paypal_toggle),
+    path("payment-details/pen-banner-toggle", views.pen_banner_toggle),
 
     # PayPal Checkout (real Orders v2 API)
     path("paypal/create-order", views.paypal_create_order),
