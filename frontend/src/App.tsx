@@ -703,7 +703,7 @@ export default function App() {
                     type="button"
                     onClick={() => setShowPenInfoModal(true)}
                     aria-label="Pre-filled pen option — view shipping information"
-                    className="group relative mt-8 w-full max-w-3xl overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
+                    className="group relative mt-8 w-full max-w-3xl min-h-[132px] sm:min-h-[150px] overflow-hidden rounded-2xl border border-purple-300/40 text-left shadow-xl shadow-purple-900/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-purple-500/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 cursor-pointer block"
                     style={{ background: 'linear-gradient(100deg, #f5eeff 0%, #ebe1fe 45%, #dcd3ff 100%)' }}
                   >
                     {/* Pen photo, faded into the card on its left edge */}
@@ -711,18 +711,18 @@ export default function App() {
                       src="/pen-banner.jpg"
                       alt=""
                       aria-hidden="true"
-                      className="pointer-events-none absolute right-0 top-0 h-full w-[62%] sm:w-[52%] object-cover object-left transition-transform duration-500 group-hover:scale-105"
+                      className="pointer-events-none absolute right-0 top-0 h-full w-auto max-w-[68%] sm:max-w-[60%] object-cover object-left transition-transform duration-500 group-hover:scale-105"
                       style={{
                         WebkitMaskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
                         maskImage: 'linear-gradient(to right, transparent 0%, #000 38%)',
                       }}
                     />
-                    <div className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6">
+                    <div className="relative z-10 flex items-center justify-between gap-4 px-5 py-5 sm:px-7 sm:py-6 min-h-[inherit]">
                       <div className="min-w-0">
                         <span className="inline-block rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-500 px-3 py-1 text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-purple-500/30">
                           New
                         </span>
-                        <h3 className="font-display mt-2 text-xl sm:text-3xl font-extrabold uppercase leading-tight tracking-tight text-[#1b1650]">
+                        <h3 className="font-display mt-2 text-xl sm:text-2xl lg:text-3xl font-extrabold uppercase leading-tight tracking-tight text-[#1b1650]">
                           Pre-Filled Pen Option
                         </h3>
                         <p className="mt-1 text-xs sm:text-sm font-semibold text-[#2a2759]">Available for select products.</p>
@@ -1290,7 +1290,7 @@ export default function App() {
               <div className="flex gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
                 <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  <strong className="text-white">Please note:</strong> Orders placed outside dispatch days will be shipped on the next available dispatch day. 💜
+                  <strong className="text-white">Please note:</strong> Orders placed outside dispatch days will be shipped on the next available dispatch day.
                 </p>
               </div>
 
