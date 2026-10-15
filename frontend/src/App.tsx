@@ -37,12 +37,12 @@ interface CartItem {
   addon_selected?: boolean;
 }
 
-// Optional add-on: Disposable Pen Preparation. Name, description, price and
+// Optional add-on: Upgrade to Pen Format. Name, description, price and
 // image are FIXED here (admins can only switch it on/off per product). The
 // backend re-validates and re-prices it on every order — it never trusts
 // this number.
-const PEN_ADDON_NAME = 'Disposable Pen Preparation';
-const PEN_ADDON_DESCRIPTION = 'Have your product prepared in a disposable pen for ease of use. Includes 5 needle heads and 5 prep pads.';
+const PEN_ADDON_NAME = 'Upgrade to Pen Format';
+const PEN_ADDON_DESCRIPTION = 'Choose our convenient pre-filled pen option, complete with 5 compatible needle heads and 5 preparation pads.';
 const PEN_ADDON_PRICE = 50;
 const CART_STORAGE_KEY = 'glowstate_cart_v1';
 
@@ -1157,7 +1157,7 @@ export default function App() {
               </div>
               )}
 
-              {/* Optional Add-on: Disposable Pen Preparation (admin ON/OFF per product) */}
+              {/* Optional Add-on: Upgrade to Pen Format (admin ON/OFF per product) */}
               {isPenAddonAvailable(selectedProduct) && (
                 <div className="bg-[#0a0a25]/60 border border-purple-500/30 rounded-xl p-4 space-y-2.5 relative z-10">
                   <span className="inline-block text-[9px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/10 py-0.5 px-2 rounded border border-purple-500/30">
