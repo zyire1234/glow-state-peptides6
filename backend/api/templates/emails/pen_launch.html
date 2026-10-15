@@ -1,0 +1,58 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Pre-filled pens are now available{% endblock %}
+
+{% block heading %}{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 22px 0;text-align:center;">
+  <img src="cid:{{ image_cid }}" alt="Glow State pre-filled disposable pens" width="100%" style="display:block;width:100%;max-width:528px;height:auto;border-radius:10px;border:0;margin:0 auto;">
+</p>
+
+<p style="margin:0 0 18px 0;color:#ffffff;font-size:21px;font-weight:700;line-height:1.35;">Pre-filled pens are now available</p>
+
+<p style="margin:0 0 8px 0;color:#ffffff;font-size:14px;font-weight:700;">Each pen includes</p>
+<ul style="margin:0 0 24px 0;padding:0 0 0 20px;color:#cbd5e1;">
+  <li style="margin:0 0 5px 0;">5 compatible needle heads</li>
+  <li style="margin:0 0 5px 0;">5 preparation pads</li>
+  <li style="margin:0;">Convenient storage packaging</li>
+</ul>
+
+<p style="margin:0 0 10px 0;color:#ffffff;font-size:14px;font-weight:700;">The Details</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px 0;background-color:#0f0f33;border:1px solid rgba(168,85,247,0.25);border-radius:10px;">
+  <tr>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);width:34%;color:#c084fc;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Location</td>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);color:#e2e8f0;">Available in QLD &amp; NSW only</td>
+  </tr>
+  <tr>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);color:#c084fc;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Price</td>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);color:#e2e8f0;">$50 per disposable pen</td>
+  </tr>
+  <tr>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);color:#c084fc;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Preparation</td>
+    <td style="padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.07);color:#e2e8f0;">24-hour preparation time</td>
+  </tr>
+  <tr>
+    <td style="padding:12px 16px;color:#c084fc;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Dispatch</td>
+    <td style="padding:12px 16px;color:#e2e8f0;">Monday–Wednesday for efficient delivery</td>
+  </tr>
+</table>
+
+<p style="margin:0 0 8px 0;color:#ffffff;font-size:14px;font-weight:700;">How to Order</p>
+<p style="margin:0 0 22px 0;">Simply select an eligible product and choose the Pre-Filled Pen Add-On before checkout.</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 28px auto;">
+  <tr>
+    <td align="center" style="border-radius:10px;background-color:#7c3aed;background-image:linear-gradient(90deg,#2563eb,#9333ea);">
+      <a href="https://www.glowstatepeptide.com" style="display:inline-block;padding:13px 28px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;border-radius:10px;">www.glowstatepeptide.com</a>
+    </td>
+  </tr>
+</table>
+
+<p style="margin:0 0 24px 0;color:#ffffff;font-weight:600;">Glow State</p>
+
+<p style="margin:0 0 28px 0;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08);color:#64748b;font-size:11px;line-height:1.6;">
+  You're receiving this because you've ordered from Glow State before.
+  To stop receiving promotional emails, just reply with &ldquo;unsubscribe&rdquo;.
+</p>
+{% endblock %}
