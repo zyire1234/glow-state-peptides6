@@ -427,6 +427,8 @@ PEN_LAUNCH_IMAGE_CID = "pen-launch-image"
 PEN_LAUNCH_TEXT_LINES = [
     "Introducing Our Latest Addition — Pre-Filled Pens!",
     "",
+    "Now enjoy your favourite products conveniently prepared in pens for you!",
+    "",
     "Each pen includes:",
     "- 5 compatible needle heads",
     "- 5 preparation pads",
@@ -443,6 +445,7 @@ PEN_LAUNCH_TEXT_LINES = [
     "",
     "https://glowstatepeptide.com",
     "",
+    "Thank you for your continued trust and support.",
     "Glow State",
     "",
     "You're receiving this because you've ordered from Glow State before. "
