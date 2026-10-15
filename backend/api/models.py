@@ -32,12 +32,12 @@ class AdminSession(models.Model):
         return timezone.now() < self.expires_at
 
 
-# --- Optional add-on: Disposable Pen Preparation ---------------------------
+# --- Optional add-on: Upgrade to Pen Format ---------------------------
 # The name, description and price are FIXED in code on purpose. Admins can only
 # switch the add-on on/off per product (see the three flags on Product); they
 # can never change what it is called or what it costs. The backend always
 # charges this constant and never trusts a price sent by the browser.
-PEN_ADDON_NAME = "Disposable Pen Preparation"
+PEN_ADDON_NAME = "Upgrade to Pen Format"
 PEN_ADDON_PRICE = Decimal("50.00")
 
 
