@@ -420,7 +420,7 @@ def start_coupon_notification(coupon, resend=False):
 # duplicate guard, so sending it never affects (or is blocked by) the others.
 
 PEN_LAUNCH_CAMPAIGN = "pen_launch_2026"
-PEN_LAUNCH_SUBJECT = "Pre-filled pens are now available"
+PEN_LAUNCH_SUBJECT = "Pre-filled Pens! Now available ✨"
 PEN_LAUNCH_IMAGE_PATH = Path(__file__).resolve().parent / "emails_assets" / "glow_state_pen_launch.jpg"
 PEN_LAUNCH_IMAGE_CID = "pen-launch-image"
 
@@ -438,9 +438,9 @@ PEN_LAUNCH_TEXT_LINES = [
     "Dispatch: Monday–Wednesday for efficient delivery",
     "",
     "How to Order",
-    "Simply select an eligible product and choose the Pre-Filled Pen Add-On before checkout.",
+    "Simply select an eligible product and choose the optional pen upgrade before proceeding to checkout. ✨",
     "",
-    "www.glowstatepeptide.com",
+    "https://glowstatepeptide.com",
     "",
     "Glow State",
     "",
