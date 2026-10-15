@@ -420,12 +420,12 @@ def start_coupon_notification(coupon, resend=False):
 # duplicate guard, so sending it never affects (or is blocked by) the others.
 
 PEN_LAUNCH_CAMPAIGN = "pen_launch_2026"
-PEN_LAUNCH_SUBJECT = "Pre-filled Pens! Now available ✨"
+PEN_LAUNCH_SUBJECT = "Pre-filled pens are now available"
 PEN_LAUNCH_IMAGE_PATH = Path(__file__).resolve().parent / "emails_assets" / "glow_state_pen_launch.jpg"
 PEN_LAUNCH_IMAGE_CID = "pen-launch-image"
 
 PEN_LAUNCH_TEXT_LINES = [
-    "Introducing Our Latest Addition — Pre-Filled Pens!",
+    "Pre-filled pens are now available",
     "",
     "Each pen includes:",
     "- 5 compatible needle heads",
@@ -433,8 +433,9 @@ PEN_LAUNCH_TEXT_LINES = [
     "- Convenient storage packaging",
     "",
     "The Details",
-    "Location: Available to our QLD & NSW customers only",
+    "Location: Available in QLD & NSW only",
     "Price: $50 per disposable pen",
+    "Preparation: Prepared to order, typically within 24 hours",
     "Dispatch: Monday–Wednesday for efficient delivery",
     "",
     "How to Order",
