@@ -425,7 +425,7 @@ PEN_LAUNCH_IMAGE_PATH = Path(__file__).resolve().parent / "emails_assets" / "glo
 PEN_LAUNCH_IMAGE_CID = "pen-launch-image"
 
 PEN_LAUNCH_TEXT_LINES = [
-    "Pre-filled pens are now available",
+    "Introducing Our Latest Addition — Pre-Filled Pens!",
     "",
     "Each pen includes:",
     "- 5 compatible needle heads",
@@ -433,8 +433,8 @@ PEN_LAUNCH_TEXT_LINES = [
     "- Convenient storage packaging",
     "",
     "The Details",
-    "Location: Available in QLD & NSW only",
-    "Price: $50 per disposable pen",
+    "Location: Available to our QLD & NSW customers only",
+    "Price: Disposable Pen Upgrade — $50",
     "Preparation: Prepared to order, typically within 24 hours",
     "Dispatch: Monday–Wednesday for efficient delivery",
     "",
