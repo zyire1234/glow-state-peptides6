@@ -409,3 +409,93 @@ def start_coupon_notification(coupon, resend=False):
         "queued": len(claimed),
         "already_sent": len(recipients) - len(claimed),
     }
+
+
+# ===========================================================================
+# FEATURE 3 — Pre-filled pen launch announcement
+# ===========================================================================
+# Independent of Features 1 and 2: its own campaign key, template, image and
+# duplicate guard, so sending it never affects (or is blocked by) the others.
+
+PEN_LAUNCH_CAMPAIGN = "pen_launch_2026"
+PEN_LAUNCH_SUBJECT = "Pre-filled pens are now available"
+PEN_LAUNCH_IMAGE_PATH = Path(__file__).resolve().parent / "emails_assets" / "glow_state_pen_launch.jpg"
+PEN_LAUNCH_IMAGE_CID = "pen-launch-image"
+
+PEN_LAUNCH_TEXT_LINES = [
+    "Pre-filled pens are now available",
+    "",
+    "Each pen includes:",
+    "- 5 compatible needle heads",
+    "- 5 preparation pads",
+    "- Convenient storage packaging",
+    "",
+    "The Details",
+    "Location: Available in QLD & NSW only",
+    "Price: $50 per disposable pen",
+    "Preparation: 24-hour preparation time",
+    "Dispatch: Monday–Wednesday for efficient delivery",
+    "",
+    "How to Order",
+    "Simply select an eligible product and choose the Pre-Filled Pen Add-On before checkout.",
+    "",
+    "www.glowstatepeptide.com",
+    "",
+    "Glow State",
+    "",
+    "You're receiving this because you've ordered from Glow State before. "
+    "To stop receiving promotional emails, just reply with \"unsubscribe\".",
+]
+
+
+class _PenLaunchEmail(EmailMultiAlternatives):
+    """Text + HTML email with the pen photo embedded inline (cid:), the same
+    technique the promo email uses so it shows without a 'download pictures'
+    prompt."""
+
+    def message(self, *, policy=None):
+        msg = super().message(**({"policy": policy} if policy is not None else {}))
+        html_part = msg.get_body(preferencelist=("html",))
+        html_part.add_related(
+            PEN_LAUNCH_IMAGE_PATH.read_bytes(), "image", "jpeg",
+            cid=f"<{PEN_LAUNCH_IMAGE_CID}>", disposition="inline",
+            filename="glow-state-pre-filled-pens.jpg",
+        )
+        return msg
+
+
+def build_pen_launch_message(email, name=""):
+    """Same content for everyone (no personalisation)."""
+    html = render_to_string("emails/pen_launch.html", {"image_cid": PEN_LAUNCH_IMAGE_CID})
+    msg = _PenLaunchEmail(
+        subject=PEN_LAUNCH_SUBJECT,
+        body="\n".join(PEN_LAUNCH_TEXT_LINES),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[email],
+    )
+    msg.attach_alternative(html, "text/html")
+    return msg
+
+
+def send_pen_launch_test(addresses):
+    """Immediate test send. Does NOT touch the duplicate log, so testing never
+    uses up the real send."""
+    return send_claimed(
+        PEN_LAUNCH_CAMPAIGN, [(a.strip(), "") for a in addresses],
+        build_pen_launch_message, track=False,
+    )
+
+
+def send_pen_launch_to_previous_customers(dry_run=False):
+    """Everyone on file (any order status, plus archived orders). Safe to run
+    more than once — anyone who already received it is skipped."""
+    recipients = collect_recipients()
+    if dry_run:
+        done = set(EmailSendLog.objects.filter(campaign=PEN_LAUNCH_CAMPAIGN, status="sent").values_list("email", flat=True))
+        return {"total": len(recipients), "to_send": len([r for r in recipients if r[0] not in done]), "dry_run": True}
+    claimed = claim_recipients(PEN_LAUNCH_CAMPAIGN, recipients)
+    result = send_claimed(PEN_LAUNCH_CAMPAIGN, claimed, build_pen_launch_message)
+    result.update({"total": len(recipients), "skipped_already_sent": len(recipients) - len(claimed)})
+    _log_activity("email_sent", json.dumps({"type": PEN_LAUNCH_CAMPAIGN, "note": "pen launch email to previous customers", **{
+        k: result[k] for k in ("sent", "failed", "total", "skipped_already_sent")}}))
+    return result
