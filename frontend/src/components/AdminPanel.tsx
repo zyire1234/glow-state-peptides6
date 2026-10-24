@@ -2181,7 +2181,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                   );
                 })}
                 <p className="text-slate-500 text-[10px]">
-                  Add-on: Upgrade to Pen Format — fixed at $50.00 AUD (not editable).
+                  Add-on: Upgrade to Pen Format — fixed at $40.00 AUD (not editable).
                 </p>
               </div>
 
