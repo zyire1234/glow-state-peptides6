@@ -38,7 +38,7 @@ class AdminSession(models.Model):
 # can never change what it is called or what it costs. The backend always
 # charges this constant and never trusts a price sent by the browser.
 PEN_ADDON_NAME = "Upgrade to Pen Format"
-PEN_ADDON_PRICE = Decimal("50.00")
+PEN_ADDON_PRICE = Decimal("40.00")
 
 
 class Product(models.Model):
