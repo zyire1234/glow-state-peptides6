@@ -46,7 +46,7 @@ interface CartItem {
 // this number.
 const PEN_ADDON_NAME = 'Upgrade to Pen Format';
 const PEN_ADDON_DESCRIPTION = 'Choose our convenient pre-filled pen option, complete with 5 compatible needle heads and 5 preparation pads.';
-const PEN_ADDON_PRICE = 50;
+const PEN_ADDON_PRICE = 40;
 const CART_STORAGE_KEY = 'glowstate_cart_v1';
 
 // Products that should NOT show the "Compound Profile Data" box in their popup.
@@ -315,7 +315,7 @@ export default function App() {
   const addToCart = (product: Product, quantity = 1, withPenAddon = false) => {
     // The add-on is only honoured when it is actually available for this
     // product, and a cart line can only ever carry it ONCE (adding the same
-    // product again never stacks a second $50).
+    // product again never stacks a second $40).
     const addon = withPenAddon && isPenAddonAvailable(product);
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
@@ -376,7 +376,7 @@ export default function App() {
 
   const cartLineHasAddon = (item: CartItem) => !!item.addon_selected && isPenAddonAvailable(item.product);
 
-  // Fixed $50.00 per selected line, added once — never multiplied by quantity,
+  // Fixed $40.00 per selected line, added once — never multiplied by quantity,
   // never discounted by a coupon, and not counted toward free shipping.
   const getAddonsTotal = () => {
     return cart.reduce((sum, item) => sum + (cartLineHasAddon(item) ? PEN_ADDON_PRICE : 0), 0);
@@ -518,7 +518,7 @@ export default function App() {
       product_name: item.product.name,
       quantity: item.quantity,
       price: item.product.is_discounted && item.product.discount_price ? item.product.discount_price : item.product.price,
-      // Only a yes/no goes to the server; it decides the name and $50 price itself.
+      // Only a yes/no goes to the server; it decides the name and $40 price itself.
       addon_selected: cartLineHasAddon(item)
     }));
 
@@ -1189,7 +1189,7 @@ export default function App() {
                   <span className="text-[10px] uppercase text-slate-500 tracking-wider">Acquisition Fee</span>
                   {(() => {
                     // Total updates immediately as the add-on is ticked/unticked
-                    // (the $50 is only ever included once).
+                    // (the $40 is only ever included once).
                     const addonOn = addonChecked && isPenAddonAvailable(selectedProduct);
                     const unit = selectedProduct.is_discounted && selectedProduct.discount_price
                       ? selectedProduct.discount_price
