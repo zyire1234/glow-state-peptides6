@@ -1261,13 +1261,13 @@ export default function App() {
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-purple-400">Pre-Filled Pen Option</span>
                   <h3 id="pen-info-title" className="font-display text-xl sm:text-2xl font-extrabold text-white leading-tight">
-                    Disposable Pen – Shipping Information
+                    Upgrade Your Favourite Peptide to a Pen!
                   </h3>
                 </div>
               </div>
 
               <p className="text-sm text-slate-300 leading-relaxed">
-                Disposable pens are available for selected compounds only and are prepared once an order is completed.
+                When selecting your peptide, you will now have the pen add-on option available. Enjoy the ease and convenience of a pen.
               </p>
 
               <div className="rounded-xl border border-purple-500/30 bg-purple-500/10 p-4 space-y-3">
@@ -1286,6 +1286,13 @@ export default function App() {
                   Dispatch: Monday–Wednesday only, to ensure prepared pens arrive as quickly and efficiently as possible.
                 </p>
               </div>
+
+              <img
+                src="/pen-modal.jpg"
+                alt="Pre-filled peptide pens: Melanotan 1, CJC-IPA (no dac) and 5-Amino-1MQ, with pen needles"
+                className="w-full rounded-xl object-cover"
+                loading="lazy"
+              />
 
               <div className="flex gap-3 rounded-xl border border-white/10 bg-white/5 p-4">
                 <Info className="h-4 w-4 mt-0.5 shrink-0 text-blue-400" />
