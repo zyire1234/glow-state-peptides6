@@ -1279,14 +1279,14 @@ export default function App() {
                   <span className="text-xs font-bold uppercase tracking-wider">Dispatch</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {['Monday', 'Tuesday', 'Wednesday'].map(day => (
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday (QLD only)'].map(day => (
                     <span key={day} className="rounded-full bg-gradient-to-r from-purple-600 to-violet-600 px-3.5 py-1 text-xs font-bold text-white shadow-md shadow-purple-600/30">
                       {day}
                     </span>
                   ))}
                 </div>
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  Dispatch: Monday–Wednesday only, to ensure prepared pens arrive as quickly and efficiently as possible.
+                  Dispatch: Monday–Wednesday, &amp; Thursday (QLD only) to ensure prepared pens arrive as quickly and efficiently as possible.
                 </p>
               </div>
 
