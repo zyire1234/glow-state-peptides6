@@ -1279,7 +1279,7 @@ export default function App() {
                   <span className="text-xs font-bold uppercase tracking-wider">Dispatch</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday (QLD only)'].map(day => (
+                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday'].map(day => (
                     <span key={day} className="rounded-full bg-gradient-to-r from-purple-600 to-violet-600 px-3.5 py-1 text-xs font-bold text-white shadow-md shadow-purple-600/30">
                       {day}
                     </span>
