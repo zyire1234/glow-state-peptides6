@@ -2098,7 +2098,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                               Delete
                             </button>
                           </div>
-                        ) : slot === certs.length ? (
+                        ) : slot >= certs.length ? (
                           <div className="flex flex-wrap items-center gap-2">
                             <input
                               type="text"
@@ -2133,9 +2133,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                               </button>
                             )}
                           </div>
-                        ) : (
-                          <p className="text-slate-600 text-[11px]">Upload COA 1 first.</p>
-                        )}
+                        ) : null}
                       </div>
                     );
                   })}
@@ -2157,7 +2155,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                           ? 'Uploading…'
                           : pending.length === 2
                             ? 'Upload COA 1 & COA 2'
-                            : `Upload COA ${pending[0].slot + 1}`}
+                            : `Upload COA ${have + 1}`}
                       </button>
                     );
                   })()}
