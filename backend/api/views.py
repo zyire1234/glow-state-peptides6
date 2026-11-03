@@ -21,7 +21,7 @@ from . import paypal
 from .auth import require_admin, rate_limit, get_admin_session, IsAdminOrReadOnly, IsAdmin
 from .email_utils import send_branded_email
 from . import campaigns
-from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon, Archive
+from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Coupon, Archive, ProductCertificate
 from .models import PEN_ADDON_NAME, PEN_ADDON_PRICE
 from .serializers import ProductSerializer, OrderSerializer, PaymentSerializer
 
@@ -1318,6 +1318,87 @@ class ProductViewSet(viewsets.ModelViewSet):
             "certificate_content_type", "certificate_uploaded_at",
         ])
         log_activity("certificate_deleted", f"Admin deleted the certificate for product: {product.name}")
+        return Response(ProductSerializer(product).data, status=200)
+
+
+    # -----------------------------------------------------------------
+    # Multiple COAs per product — additive, the single-certificate
+    # endpoint above keeps working unchanged.
+    # GET    /api/products/<id>/certificates/            -> public, list (metadata)
+    # POST   /api/products/<id>/certificates/            -> admin, add another COA
+    #        body: { "label": str (optional), "filename": str,
+    #                "content_type": str, "data": base64 }
+    # GET    /api/products/<id>/certificates/<cert_id>/  -> public, serves the file
+    # DELETE /api/products/<id>/certificates/<cert_id>/  -> admin, removes it
+    # -----------------------------------------------------------------
+    MAX_CERTIFICATES_PER_PRODUCT = 30
+
+    @action(detail=True, methods=["get", "post"], url_path="certificates")
+    def certificates(self, request, pk=None):
+        product = self.get_object()
+
+        if request.method == "GET":
+            return Response(product.certificates_summary())
+
+        data = request.data or {}
+        b64_data = data.get("data")
+        filename = data.get("filename") or "certificate"
+        label = (data.get("label") or "").strip()[:255]
+        content_type = data.get("content_type") or "application/octet-stream"
+
+        if not b64_data:
+            return Response({"error": "Certificate file data is required."}, status=400)
+
+        if product.certificates.count() >= self.MAX_CERTIFICATES_PER_PRODUCT:
+            return Response(
+                {"error": f"Maximum of {self.MAX_CERTIFICATES_PER_PRODUCT} extra certificates per product."},
+                status=400,
+            )
+
+        if "," in b64_data and b64_data.strip().startswith("data:"):
+            b64_data = b64_data.split(",", 1)[1]
+
+        try:
+            decoded = base64.b64decode(b64_data)
+        except (binascii.Error, ValueError):
+            return Response({"error": "Certificate data is not valid base64."}, status=400)
+
+        if len(decoded) > 10 * 1024 * 1024:  # 10MB
+            return Response({"error": "Certificate file is too large (10MB max)."}, status=400)
+
+        ProductCertificate.objects.create(
+            product=product,
+            label=label,
+            filename=filename[:255],
+            content_type=content_type[:100],
+            data=b64_data,
+        )
+        log_activity("certificate_uploaded", f"Admin added a certificate for product: {product.name}")
+        return Response(ProductSerializer(product).data, status=200)
+
+    @action(detail=True, methods=["get", "delete"], url_path=r"certificates/(?P<cert_id>[0-9]+)")
+    def certificate_file(self, request, pk=None, cert_id=None):
+        product = self.get_object()
+        try:
+            cert = product.certificates.get(pk=cert_id)
+        except ProductCertificate.DoesNotExist:
+            return Response({"error": "Certificate not found."}, status=404)
+
+        if request.method == "GET":
+            try:
+                file_bytes = base64.b64decode(cert.data)
+            except (binascii.Error, ValueError):
+                return Response({"error": "Stored certificate data is corrupted."}, status=500)
+            response = HttpResponse(
+                file_bytes,
+                content_type=cert.content_type or "application/octet-stream",
+            )
+            response["Content-Disposition"] = f'inline; filename="{cert.filename or f"certificate-{cert.id}"}"'
+            return response
+
+        # DELETE
+        cert.delete()
+        log_activity("certificate_deleted", f"Admin deleted a certificate for product: {product.name}")
         return Response(ProductSerializer(product).data, status=200)
 
 
