@@ -21,6 +21,7 @@ interface Product {
   stock: number;
   has_certificate?: boolean;
   certificates?: { id: number | null; label: string; filename: string; url: string }[];
+  allows_multiple_certificates?: boolean;
   addon_enabled?: boolean;
   addon_pen_in_customer_view?: boolean;
 }
@@ -785,7 +786,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           setEditingProduct(prev => prev ? {
             ...prev,
             has_certificate: updated.has_certificate,
-            certificates: updated.certificates
+            certificates: updated.certificates,
+            allows_multiple_certificates: updated.allows_multiple_certificates
           } : prev);
         } else {
           const err = await res.json().catch(() => ({}));
@@ -2085,6 +2087,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     </ul>
                   )}
 
+                  {(editingProduct.certificates || []).length < (editingProduct.allows_multiple_certificates ? 2 : 1) && (
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="text"
@@ -2094,7 +2097,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                       className="flex-1 min-w-[160px] bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-[11px] focus:outline-none focus:border-purple-500"
                     />
                     <label className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
-                      {certUploading ? 'Uploading…' : (editingProduct.certificates || []).length > 0 ? 'Add Another Certificate' : 'Upload Certificate'}
+                      {certUploading ? 'Uploading…' : (editingProduct.certificates || []).length > 0 ? 'Add Extra Certificate' : 'Upload Certificate'}
                       <input
                         type="file"
                         multiple
@@ -2109,10 +2112,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                       />
                     </label>
                   </div>
+                  )}
 
                   {certError && <p className="text-rose-400 text-[11px]">{certError}</p>}
                   <p className="text-slate-500 text-[10px]">
-                    Accepted: PDF or image. You can add as many as you need — each one appears as its own COA button on the product page.
+                    Accepted: PDF or image. {editingProduct.allows_multiple_certificates ? 'You can have up to 2 COAs (the original plus one extra). Each one appears as its own COA button on the product page.' : 'One COA per product. To swap it, delete the current one and upload the new file.'}
                   </p>
                 </div>
               )}
