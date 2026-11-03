@@ -73,6 +73,34 @@ class Product(models.Model):
     addon_pen_in_customer_view = models.BooleanField(default=False)
     addon_show_view_pen_button = models.BooleanField(default=False)
 
+    def certificates_summary(self):
+        """Every COA for this product, metadata only (never the file data).
+
+        Includes the original single certificate (if one was uploaded before
+        multi-COA support existed) plus any extra ones in ProductCertificate.
+        `url` is relative to /api/products/<id>/ and works for GET (view)
+        and DELETE (admin remove).
+        """
+        items = []
+        if self.certificate_data:
+            items.append({
+                "id": None,
+                "label": "",
+                "filename": self.certificate_filename or "certificate",
+                "url": "certificate/",
+            })
+        for c in self.certificates.defer("data").order_by("id"):
+            items.append({
+                "id": c.id,
+                "label": c.label or "",
+                "filename": c.filename or "certificate",
+                "url": f"certificates/{c.id}/",
+            })
+        return items
+
+    def has_any_certificate(self):
+        return bool(self.certificate_data) or self.certificates.exists()
+
     @property
     def pen_addon_available(self):
         """True only when the add-on can actually be selected AND charged."""
@@ -91,11 +119,33 @@ class Product(models.Model):
             "category": self.category,
             "stock": self.stock,
             "created_at": self.created_at.isoformat(),
-            "has_certificate": bool(self.certificate_data),
+            "has_certificate": self.has_any_certificate(),
+            "certificates": self.certificates_summary(),
             "addon_enabled": self.addon_enabled,
             "addon_pen_in_customer_view": self.addon_pen_in_customer_view,
             "addon_show_view_pen_button": self.addon_show_view_pen_button,
         }
+
+
+class ProductCertificate(models.Model):
+    """Additional Certificates of Analysis (COAs) for a product.
+
+    A product can have any number of these (e.g. one per batch). Stored as
+    base64 text in the database, same approach as Product.certificate_data,
+    so it works on Render without S3 or a persistent disk.
+    """
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="certificates")
+    label = models.CharField(max_length=255, blank=True, default="")
+    filename = models.CharField(max_length=255, blank=True, default="")
+    content_type = models.CharField(max_length=100, blank=True, default="")
+    data = models.TextField()
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.product.name} - {self.label or self.filename}"
 
 
 class Coupon(models.Model):
