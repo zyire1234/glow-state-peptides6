@@ -47,9 +47,7 @@ function CoaLinks({ product }: { product: Product }) {
   const btn = "inline-flex w-fit items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all";
   return (
     <div className="flex flex-wrap gap-2">
-      {certs.map((c, i) => {
-        const name = (c.label || '').trim() || (c.filename || '').replace(/\.[^.]+$/, '');
-        const text = certs.length === 1 ? 'COA' : `COA ${i + 1}${name ? ` · ${name}` : ''}`;
+      {certs.map((c) => {
         return (
           <a
             key={c.id ?? 'legacy'}
@@ -58,7 +56,7 @@ function CoaLinks({ product }: { product: Product }) {
             rel="noreferrer"
             className={btn}
           >
-            {text} <ExternalLink className="h-3 w-3" />
+            COA <ExternalLink className="h-3 w-3" />
           </a>
         );
       })}
