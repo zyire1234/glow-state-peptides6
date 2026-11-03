@@ -194,7 +194,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   // Product Certificate (COA) upload state — additive
   const [certUploading, setCertUploading] = useState<boolean>(false);
   const [certError, setCertError] = useState<string>('');
-  const [certLabel, setCertLabel] = useState<string>('');
+  // Two COA upload slots staged in the product form (uploaded together with one click)
+  const [coaStaged, setCoaStaged] = useState<{ file: File | null; label: string }[]>([
+    { file: null, label: '' },
+    { file: null, label: '' }
+  ]);
 
   // Selected email for visual preview modal
   const [selectedEmail, setSelectedEmail] = useState<SimulatedEmail | null>(null);
@@ -450,6 +454,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       addon_pen_in_customer_view: false
     });
     setCertError('');
+    setCoaStaged([{ file: null, label: '' }, { file: null, label: '' }]);
     setShowProductModal(true);
   };
 
@@ -469,6 +474,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       addon_pen_in_customer_view: !!prod.addon_pen_in_customer_view
     });
     setCertError('');
+    setCoaStaged([{ file: null, label: '' }, { file: null, label: '' }]);
     setShowProductModal(true);
   };
 
@@ -752,13 +758,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   };
 
   // Product Certificate (COA) actions — additive, requires an existing product
-  // Uploads one or more COA files (each is ADDED — existing ones are kept).
-  const uploadCertificates = async (files: File[]) => {
-    if (!editingProduct || files.length === 0) return;
+  // Uploads the staged COA files (up to 2) one after the other; each is ADDED
+  // to the product, existing COAs are kept.
+  const uploadCertificates = async (items: { file: File; label: string }[]) => {
+    if (!editingProduct || items.length === 0) return;
     setCertUploading(true);
     setCertError('');
     try {
-      for (const file of files) {
+      for (const { file, label } of items) {
         const dataUrl: string = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
@@ -774,7 +781,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            label: files.length === 1 ? certLabel.trim() : '',
+            label: label.trim(),
             filename: file.name,
             content_type: file.type || 'application/octet-stream',
             data: base64Data
@@ -792,10 +799,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
         } else {
           const err = await res.json().catch(() => ({}));
           setCertError(err.error || `Failed to upload ${file.name}.`);
-          break;
+          fetchAdminData();
+          return;
         }
       }
-      setCertLabel('');
+      setCoaStaged([{ file: null, label: '' }, { file: null, label: '' }]);
       fetchAdminData();
     } catch (err) {
       setCertError('Network failure uploading certificate.');
@@ -2057,66 +2065,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     Certificate of Analysis (COA)
                   </label>
 
-                  {(editingProduct.certificates || []).length > 0 && (
-                    <ul className="space-y-1.5">
-                      {(editingProduct.certificates || []).map((cert, i) => (
-                        <li
-                          key={cert.id ?? 'legacy'}
-                          className="flex items-center justify-between gap-2 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2"
-                        >
-                          <a
-                            href={`${API_BASE_URL}/products/${editingProduct.id}/${cert.url}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-white hover:text-purple-300 text-[11px] font-semibold truncate"
-                            title={cert.filename}
-                          >
-                            {i + 1}. {cert.label || cert.filename}
-                            {cert.label && <span className="text-slate-500 font-normal"> — {cert.filename}</span>}
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => deleteCertificate(cert)}
-                            disabled={certUploading}
-                            className="py-1 px-2.5 bg-slate-800 hover:bg-rose-900/60 text-rose-400 rounded-lg text-[11px] font-semibold shrink-0"
-                          >
-                            Delete
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  {[0, 1].map((slot) => {
+                    const certs = editingProduct.certificates || [];
+                    const cert = certs[slot];
+                    const staged = coaStaged[slot];
+                    return (
+                      <div
+                        key={slot}
+                        className="bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2.5 space-y-2"
+                      >
+                        <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                          COA {slot + 1}
+                        </div>
+                        {cert ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <a
+                              href={`${API_BASE_URL}/products/${editingProduct.id}/${cert.url}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-white hover:text-purple-300 text-[11px] font-semibold truncate"
+                              title={cert.filename}
+                            >
+                              {cert.label || cert.filename}
+                              {cert.label && <span className="text-slate-500 font-normal"> — {cert.filename}</span>}
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => deleteCertificate(cert)}
+                              disabled={certUploading}
+                              className="py-1 px-2.5 bg-slate-800 hover:bg-rose-900/60 text-rose-400 rounded-lg text-[11px] font-semibold shrink-0"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        ) : slot === certs.length ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="text"
+                              value={staged.label}
+                              onChange={(e) => setCoaStaged(prev => prev.map((x, j) => j === slot ? { ...x, label: e.target.value } : x))}
+                              placeholder="Label (optional)"
+                              disabled={certUploading}
+                              className="flex-1 min-w-[140px] bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-[11px] focus:outline-none focus:border-purple-500"
+                            />
+                            <label className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer max-w-[220px] truncate">
+                              {staged.file ? staged.file.name : `Choose file for COA ${slot + 1}`}
+                              <input
+                                type="file"
+                                accept="application/pdf,image/*"
+                                className="hidden"
+                                disabled={certUploading}
+                                onChange={(e) => {
+                                  const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                                  if (f) setCoaStaged(prev => prev.map((x, j) => j === slot ? { ...x, file: f } : x));
+                                  e.target.value = '';
+                                }}
+                              />
+                            </label>
+                            {staged.file && (
+                              <button
+                                type="button"
+                                onClick={() => setCoaStaged(prev => prev.map((x, j) => j === slot ? { ...x, file: null } : x))}
+                                disabled={certUploading}
+                                className="py-1 px-2 text-slate-400 hover:text-white text-[11px]"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-slate-600 text-[11px]">Upload COA 1 first.</p>
+                        )}
+                      </div>
+                    );
+                  })}
 
-                  {(editingProduct.certificates || []).length < (editingProduct.allows_multiple_certificates ? 2 : 1) && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={certLabel}
-                      onChange={(e) => setCertLabel(e.target.value)}
-                      placeholder="Label (optional, e.g. Batch 2)"
-                      className="flex-1 min-w-[160px] bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-[11px] focus:outline-none focus:border-purple-500"
-                    />
-                    <label className="py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer">
-                      {certUploading ? 'Uploading…' : (editingProduct.certificates || []).length > 0 ? 'Add Extra Certificate' : 'Upload Certificate'}
-                      <input
-                        type="file"
-                        multiple
-                        accept="application/pdf,image/*"
-                        className="hidden"
+                  {(() => {
+                    const have = (editingProduct.certificates || []).length;
+                    const pending = coaStaged
+                      .map((x, j) => ({ ...x, slot: j }))
+                      .filter(x => x.slot >= have && x.file) as { file: File; label: string; slot: number }[];
+                    if (pending.length === 0) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => uploadCertificates(pending.map(x => ({ file: x.file, label: x.label })))}
                         disabled={certUploading}
-                        onChange={(e) => {
-                          const files: File[] = e.target.files ? Array.from(e.target.files) : [];
-                          if (files.length) uploadCertificates(files);
-                          e.target.value = '';
-                        }}
-                      />
-                    </label>
-                  </div>
-                  )}
+                        className="w-full py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-60 text-white rounded-lg text-[11px] font-bold uppercase tracking-wider"
+                      >
+                        {certUploading
+                          ? 'Uploading…'
+                          : pending.length === 2
+                            ? 'Upload COA 1 & COA 2'
+                            : `Upload COA ${pending[0].slot + 1}`}
+                      </button>
+                    );
+                  })()}
 
                   {certError && <p className="text-rose-400 text-[11px]">{certError}</p>}
                   <p className="text-slate-500 text-[10px]">
-                    Accepted: PDF or image. {editingProduct.allows_multiple_certificates ? 'You can have up to 2 COAs (the original plus one extra). Each one appears as its own COA button on the product page.' : 'One COA per product. To swap it, delete the current one and upload the new file.'}
+                    Accepted: PDF or image. Each product can have up to 2 COAs. Choose both files, then click upload — each one appears as its own COA button on the product page. To replace one, delete it and upload the new file.
                   </p>
                 </div>
               )}
