@@ -1,6 +1,5 @@
 import secrets
 from datetime import timedelta
-import re
 from decimal import Decimal
 
 from django.db import models
@@ -101,9 +100,8 @@ class Product(models.Model):
 
     @property
     def allows_multiple_certificates(self):
-        """Only Retatrutide 10mg and 20mg may hold more than one COA."""
-        name = (self.name or "").lower()
-        return "retatrutide" in name and bool(re.search(r"\b(10|20)\s*mg", name))
+        """Every product can hold up to 2 COAs (cap enforced in the view)."""
+        return True
 
     def has_any_certificate(self):
         return bool(self.certificate_data) or self.certificates.exists()
