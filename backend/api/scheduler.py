@@ -1,103 +1,71 @@
-"""Fires the Feature 1 promo blast at a set time (PROMO_BLAST_AT, business
-time zone) without any manual command.
+from rest_framework import serializers
 
-How it stays safe:
-  * A "marker" row in EmailSendLog is claimed atomically (unique constraint)
-    before sending, so the blast fires exactly once even with several web
-    workers or restarts.
-  * Every recipient is also claimed individually, so nobody can ever get the
-    promo twice, whether it came from this timer, the --blast command, or
-    checkout.
-  * If email isn't configured when the time arrives, nothing is claimed and
-    it simply retries every 30 seconds (within the grace window).
-"""
-import json
-import logging
-import threading
-import time
-from datetime import datetime, timedelta
-
-from django.conf import settings
-from django.db import close_old_connections
-from django.utils import timezone
-
-from . import campaigns
-from .models import Activity, EmailSendLog
-
-logger = logging.getLogger(__name__)
-
-CHECK_EVERY_SECONDS = 30
-MARKER_EMAIL = "scheduler@marker.local"
-_started = False
-_warned_not_ready = False
+from .models import Product, Order, OrderItem, Payment
 
 
-def scheduled_time():
-    raw = (settings.PROMO_BLAST_AT or "").strip()
-    if not raw:
-        return None
-    when = datetime.fromisoformat(raw)
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=campaigns.business_tz())
-    return when
-
-
-def tick(now=None):
-    """One clock check. Returns 'fired', 'waiting', 'done', 'expired',
-    'disabled' or 'email-not-ready' (handy for tests / logs)."""
-    global _warned_not_ready
-    when = scheduled_time()
-    if when is None:
-        return "disabled"
-    now = now or timezone.now()
-    if now < when:
-        return "waiting"
-    if now > when + timedelta(hours=settings.PROMO_BLAST_GRACE_HOURS):
-        return "expired"
-
-    ok, reason = campaigns.email_ready()
-    if not ok:
-        if not _warned_not_ready:
-            _warned_not_ready = True
-            logger.warning("Scheduled promo blast is due but email is not ready: %s", reason)
-        return "email-not-ready"
-
-    marker_campaign = f"{campaigns.PROMO_CAMPAIGN}:scheduled:{when.isoformat()}"
-    _, created = EmailSendLog.objects.get_or_create(
-        campaign=marker_campaign, email=MARKER_EMAIL, defaults={"status": "sent"}
+class ProductSerializer(serializers.ModelSerializer):
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    discount_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, required=False, allow_null=True
     )
-    if not created:
-        return "done"
+    has_certificate = serializers.SerializerMethodField()
+    certificates = serializers.SerializerMethodField()
+    allows_multiple_certificates = serializers.SerializerMethodField()
 
-    result = campaigns.send_promo_to_previous_customers()
-    Activity.objects.create(type="email_sent", description=json.dumps({
-        "type": campaigns.PROMO_CAMPAIGN,
-        "note": f"scheduled promo blast at {campaigns.format_business_time(when)}",
-        "sent": result["sent"], "failed": result["failed"],
-        "total": result["total"], "skipped_already_sent": result["skipped_already_sent"],
-        "errors": result["errors"],
-    }))
-    logger.info("Scheduled promo blast finished: %s", result)
-    return "fired"
+    class Meta:
+        model = Product
+        fields = [
+            "id", "name", "description", "price", "image_url",
+            "is_best_selling", "is_discounted", "discount_price",
+            "category", "stock", "created_at", "has_certificate", "certificates", "allows_multiple_certificates",
+            "addon_enabled", "addon_pen_in_customer_view", "addon_show_view_pen_button",
+        ]
+        read_only_fields = ["id", "created_at", "has_certificate", "certificates", "allows_multiple_certificates"]
 
+    def get_has_certificate(self, obj):
+        return obj.has_any_certificate()
 
-def _loop():
-    while True:
-        close_old_connections()
-        try:
-            tick()
-        except Exception:
-            logger.exception("scheduled promo check failed")
-        finally:
-            close_old_connections()
-        time.sleep(CHECK_EVERY_SECONDS)
+    def get_allows_multiple_certificates(self, obj):
+        return obj.allows_multiple_certificates
+
+    def get_certificates(self, obj):
+        return obj.certificates_summary()
 
 
-def start():
-    """Starts the background clock once per web process."""
-    global _started
-    if _started or not (settings.PROMO_BLAST_AT or "").strip():
-        return
-    _started = True
-    threading.Thread(target=_loop, name="promo-scheduler", daemon=True).start()
-    logger.info("Promo scheduler armed for %s", settings.PROMO_BLAST_AT)
+class OrderItemSerializer(serializers.ModelSerializer):
+    product_id = serializers.IntegerField(source="product_id_snapshot")
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+    addon_price = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, read_only=True
+    )
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id", "order", "product_id", "product_name", "quantity", "price",
+            "addon_selected", "addon_name", "addon_price",
+        ]
+        read_only_fields = ["id", "order", "addon_selected", "addon_name", "addon_price"]
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    items = OrderItemSerializer(many=True, read_only=True)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+
+    class Meta:
+        model = Order
+        fields = [
+            "id", "customer_name", "customer_email", "customer_address",
+            "payment_method", "status", "total_amount", "transaction_id",
+            "paid_at", "created_at", "items",
+        ]
+        read_only_fields = ["id", "created_at", "paid_at", "items"]
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
+
+    class Meta:
+        model = Payment
+        fields = ["id", "order", "amount", "method", "status", "transaction_id", "created_at"]
+        read_only_fields = ["id", "created_at"]
