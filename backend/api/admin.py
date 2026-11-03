@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Archive
+from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery, Activity, PaymentDetails, Payment, Archive, ProductCertificate
 
 # Note: Coupon is intentionally NOT registered here — SALE30 is a fixed,
 # code-defined discount (30% off, auto-expires 7 days after the migration
@@ -8,6 +8,7 @@ from .models import AdminUser, AdminSession, Product, Order, OrderItem, Delivery
 admin.site.register(AdminUser)
 admin.site.register(AdminSession)
 admin.site.register(Product)
+admin.site.register(ProductCertificate)
 admin.site.register(Order)
 admin.site.register(OrderItem)
 admin.site.register(Payment)
