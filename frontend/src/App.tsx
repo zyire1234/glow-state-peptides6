@@ -28,9 +28,42 @@ interface Product {
   category: string;
   stock: number;
   has_certificate?: boolean;
+  // Every COA for the product (one or many). `url` is relative to /products/<id>/.
+  certificates?: { id: number | null; label: string; filename: string; url: string }[];
   // Optional add-on (Disposable Pen) — admin ON/OFF switches only.
   addon_enabled?: boolean;
   addon_pen_in_customer_view?: boolean;
+}
+
+// Renders one "COA" button per certificate (1 button looks exactly as before;
+// several buttons are labelled with the admin-entered label or the file name).
+function CoaLinks({ product }: { product: Product }) {
+  const certs = product.certificates && product.certificates.length > 0
+    ? product.certificates
+    : product.has_certificate
+      ? [{ id: null, label: '', filename: 'certificate', url: 'certificate/' }]
+      : [];
+  if (certs.length === 0) return null;
+  const btn = "inline-flex w-fit items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all";
+  return (
+    <div className="flex flex-wrap gap-2">
+      {certs.map((c, i) => {
+        const name = (c.label || '').trim() || (c.filename || '').replace(/\.[^.]+$/, '');
+        const text = certs.length === 1 ? 'COA' : `COA ${i + 1}${name ? ` · ${name}` : ''}`;
+        return (
+          <a
+            key={c.id ?? 'legacy'}
+            href={`${API_BASE_URL}/products/${product.id}/${c.url}`}
+            target="_blank"
+            rel="noreferrer"
+            className={btn}
+          >
+            {text} <ExternalLink className="h-3 w-3" />
+          </a>
+        );
+      })}
+    </div>
+  );
 }
 
 interface CartItem {
@@ -1126,32 +1159,16 @@ export default function App() {
               {/* Research Specification Data (hidden for selected products, e.g. Lemon Bottle 10ml) */}
               {shouldHideCompoundProfile(selectedProduct) ? (
                 // Keep the COA link available if this product has a certificate uploaded.
-                selectedProduct.has_certificate && (
-                  <a
-                    href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="relative z-10 inline-flex w-fit items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
-                  >
-                    COA <ExternalLink className="h-3 w-3" />
-                  </a>
-                )
+                <div className="relative z-10">
+                  <CoaLinks product={selectedProduct} />
+                </div>
               ) : (
               <div className="bg-[#0a0a25]/60 border border-white/10 rounded-xl p-4 space-y-2 relative z-10">
                 <h4 className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Compound Profile Data</h4>
                 <div className="grid grid-cols-2 gap-3 text-[11px]">
                   <div className="text-slate-400 space-y-1.5">
                     <p>Purity Grade: <strong className="text-white">99% Premium</strong></p>
-                    {selectedProduct.has_certificate && (
-                      <a
-                        href={`${API_BASE_URL}/products/${selectedProduct.id}/certificate/`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 border border-purple-500/50 text-purple-300 hover:bg-purple-500/10 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-all"
-                      >
-                        COA <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
+                    <CoaLinks product={selectedProduct} />
                   </div>
                   <p className="text-slate-400">Vial Formulation: <strong className="text-white">Lyophilized Powder</strong></p>
                   <p className="text-slate-400">Recommended Temp: <strong className="text-white">Refrigerate (2-8°C)</strong></p>
