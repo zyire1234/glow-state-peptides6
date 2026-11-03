@@ -1331,7 +1331,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     # GET    /api/products/<id>/certificates/<cert_id>/  -> public, serves the file
     # DELETE /api/products/<id>/certificates/<cert_id>/  -> admin, removes it
     # -----------------------------------------------------------------
-    MAX_CERTIFICATES_PER_PRODUCT = 30
+    MAX_CERTIFICATES_PER_PRODUCT = 2  # total COAs per eligible product (original + one extra)
 
     @action(detail=True, methods=["get", "post"], url_path="certificates")
     def certificates(self, request, pk=None):
@@ -1349,9 +1349,16 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not b64_data:
             return Response({"error": "Certificate file data is required."}, status=400)
 
-        if product.certificates.count() >= self.MAX_CERTIFICATES_PER_PRODUCT:
+        if not product.allows_multiple_certificates and product.has_any_certificate():
             return Response(
-                {"error": f"Maximum of {self.MAX_CERTIFICATES_PER_PRODUCT} extra certificates per product."},
+                {"error": "This product already has a COA. Only Retatrutide 10mg and 20mg can have more than one — delete the existing one to upload a new one."},
+                status=400,
+            )
+
+        total = product.certificates.count() + (1 if product.certificate_data else 0)
+        if total >= self.MAX_CERTIFICATES_PER_PRODUCT:
+            return Response(
+                {"error": f"This product already has {self.MAX_CERTIFICATES_PER_PRODUCT} COAs (the maximum). Delete one to add a different one."},
                 status=400,
             )
 
