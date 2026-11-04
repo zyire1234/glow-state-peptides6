@@ -755,7 +755,7 @@ export default function App() {
                           Pre-Filled Pen Option
                         </h3>
                         <p className="mt-1 text-xs sm:text-sm lg:text-base font-semibold text-[#2a2759]">Available for select products.</p>
-                        <p className="text-xs sm:text-sm lg:text-base font-medium text-[#6f6a99]">QLD &amp; NSW customers only.</p>
+                        <p className="text-xs sm:text-sm lg:text-base font-medium text-[#6f6a99]">QLD, NSW &amp; VIC customers only.</p>
                       </div>
                       <span className="flex h-11 w-11 sm:h-12 sm:w-12 lg:h-14 lg:w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-violet-600 text-white shadow-lg shadow-purple-600/40 transition-transform duration-300 group-hover:translate-x-1">
                         <ArrowRight className="h-5 w-5" />
