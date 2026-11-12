@@ -20,13 +20,15 @@ AWAY_IMAGE_PATH = Path(__file__).resolve().parent / "emails_assets" / "glow_stat
 AWAY_IMAGE_CID = "away-notice-image"
 
 AWAY_TEXT_LINES = [
-    "Please note that I will be away from the 17th and will return on the 22nd. "
-    "I will resume accepting orders upon my return.",
+    "Please note we will be away from 17th–21st November, returning on 22nd November. ❤️",
     "",
-    "In the meantime, you can place your orders now at https://glowstatepeptide.com before then.",
+    "During this time, orders will be on hold, and back to normal on the 22nd.",
     "",
-    "Thank you for your understanding.",
-    "Glow State",
+    "If you’d like to get your orders in before I head away, you can still place them through our website:",
+    "",
+    "🌐 https://glowstatepeptide.com",
+    "",
+    "Thank you as always for your continued support and understanding! Glow State. 🖤",
     "",
     "You're receiving this because you've ordered from Glow State before. "
     "To stop receiving these emails, just reply with \"unsubscribe\".",
