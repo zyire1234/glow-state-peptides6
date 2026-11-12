@@ -150,6 +150,9 @@ export default function App() {
   // Homepage "Pre-filled Pen Option" banner — admin can switch it off (e.g. out of stock).
   // Only shown once settings have loaded, so a hidden banner never flashes on screen.
   const penBannerVisible = paymentDetails !== null && paymentDetails.pen_banner_enabled !== false;
+
+  // Away notice: visible until orders resume on 22 Nov 2026 (00:00 Sydney time, AEDT = UTC+11).
+  const awayNoticeVisible = Date.now() < new Date('2026-11-22T00:00:00+11:00').getTime();
   const [showPenInfoModal, setShowPenInfoModal] = useState<boolean>(false);
   useEffect(() => {
     if (!paypalEnabled && paymentMethod === 'paypal_invoice') setPaymentMethod('bank_transfer');
@@ -725,6 +728,29 @@ export default function App() {
                     Glow State Peptides delivers ultra-pure compounds Australia-wide. Third-party tested. Australian owned and operated.
                   </p>
                 </div>
+
+                {/* Away notice (17th–21st Nov). Shows automatically and hides itself once orders resume on the 22nd (Sydney time). */}
+                {awayNoticeVisible && (
+                  <div className="mt-8 w-full max-w-3xl lg:max-w-5xl overflow-hidden rounded-2xl border border-fuchsia-400/30 bg-white/5 shadow-[0_12px_40px_-12px_rgba(217,70,239,0.5)]">
+                    <picture>
+                      <source media="(min-width: 640px)" srcSet="/away-notice-banner.jpg" />
+                      <img
+                        src="/away-notice-mobile.jpg"
+                        alt="Glow State is away 17th to 21st November. Orders resume on the 22nd. Place your order now to beat the break."
+                        className="block w-full h-auto"
+                        loading="eager"
+                      />
+                    </picture>
+                    <div className="px-5 py-4 sm:px-7 text-sm sm:text-base text-slate-200 leading-relaxed">
+                      <p>
+                        Please note that I will be away from the 17th and will return on the 22nd. I will resume accepting orders upon my return.
+                      </p>
+                      <p className="mt-2">
+                        In the meantime, you can place your orders now before then. Thank you for your understanding.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Pre-filled Pen Option banner (admin can hide it from Admin → Settings) */}
                 {penBannerVisible && (
