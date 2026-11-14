@@ -67,8 +67,9 @@ function CoaLinks({ product }: { product: Product }) {
 interface CartItem {
   product: Product;
   quantity: number;
-  // Optional Disposable Pen add-on chosen for this cart line (charged once).
-  addon_selected?: boolean;
+  // How many Disposable Pen add-ons were chosen for this cart line
+  // (each charged at PEN_ADDON_PRICE, never more than `quantity`).
+  addon_quantity?: number;
 }
 
 // Optional add-on: Upgrade to Pen Format. Name, description, price and
@@ -118,7 +119,8 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
 
   // Optional Disposable Pen add-on checkbox (product modal)
-  const [addonChecked, setAddonChecked] = useState<boolean>(false);
+  const [addonQty, setAddonQty] = useState<number>(0);
+  const [modalQty, setModalQty] = useState<number>(1);
   const cartHydratedRef = useRef(false);
 
   // Filter category state
@@ -202,9 +204,10 @@ export default function App() {
     });
   }, [selectedProduct]);
 
-  // Every time a product modal opens/closes, the add-on checkbox starts unchecked.
+  // Every time a product modal opens/closes, quantity resets to 1 and pens to 0.
   useEffect(() => {
-    setAddonChecked(false);
+    setAddonQty(0);
+    setModalQty(1);
   }, [selectedProduct?.id]);
 
   // Close the pen shipping-info popup with the Escape key.
@@ -225,7 +228,7 @@ export default function App() {
     try {
       const raw = localStorage.getItem(CART_STORAGE_KEY);
       if (!raw) return;
-      const saved = JSON.parse(raw) as { id: number; qty: number; addon?: boolean }[];
+      const saved = JSON.parse(raw) as { id: number; qty: number; addon?: boolean; pens?: number }[];
       const restored: CartItem[] = [];
       saved.forEach(entry => {
         const product = products.find(p => p.id === entry.id);
@@ -233,7 +236,10 @@ export default function App() {
         restored.push({
           product,
           quantity: entry.qty,
-          addon_selected: !!entry.addon && isPenAddonAvailable(product),
+          // `pens` is the current format; `addon` (true/false) is the old one-pen format.
+          addon_quantity: isPenAddonAvailable(product)
+            ? Math.min(entry.qty, Math.max(0, Number(entry.pens ?? (entry.addon ? 1 : 0)) || 0))
+            : 0,
         });
       });
       if (restored.length > 0) setCart(prev => (prev.length === 0 ? restored : prev));
@@ -247,7 +253,7 @@ export default function App() {
     try {
       localStorage.setItem(
         CART_STORAGE_KEY,
-        JSON.stringify(cart.map(i => ({ id: i.product.id, qty: i.quantity, addon: !!i.addon_selected })))
+        JSON.stringify(cart.map(i => ({ id: i.product.id, qty: i.quantity, pens: i.addon_quantity || 0 })))
       );
     } catch {
       /* storage unavailable (e.g. private mode) — cart still works in memory */
@@ -267,7 +273,7 @@ export default function App() {
         return {
           ...item,
           product: fresh,
-          addon_selected: !!item.addon_selected && isPenAddonAvailable(fresh),
+          addon_quantity: isPenAddonAvailable(fresh) ? Math.min(item.quantity, item.addon_quantity || 0) : 0,
         };
       });
     });
@@ -346,21 +352,24 @@ export default function App() {
   };
 
   // Cart operations
-  const addToCart = (product: Product, quantity = 1, withPenAddon = false) => {
-    // The add-on is only honoured when it is actually available for this
-    // product, and a cart line can only ever carry it ONCE (adding the same
-    // product again never stacks a second $40).
-    const addon = withPenAddon && isPenAddonAvailable(product);
+  const addToCart = (product: Product, quantity = 1, penCount = 0) => {
+    // Pens are only honoured when the add-on is actually available for this
+    // product, and a line can never carry more pens than it has items.
+    const pens = isPenAddonAvailable(product) ? Math.max(0, Math.min(penCount, quantity)) : 0;
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        return prev.map(item => 
-          item.product.id === product.id 
-            ? { ...item, quantity: item.quantity + quantity, addon_selected: !!item.addon_selected || addon }
-            : item
-        );
+        return prev.map(item => {
+          if (item.product.id !== product.id) return item;
+          const newQty = item.quantity + quantity;
+          return {
+            ...item,
+            quantity: newQty,
+            addon_quantity: Math.min(newQty, (item.addon_quantity || 0) + pens),
+          };
+        });
       }
-      return [...prev, { product, quantity, addon_selected: addon }];
+      return [...prev, { product, quantity, addon_quantity: pens }];
     });
     setIsCartOpen(true);
 
@@ -394,27 +403,31 @@ export default function App() {
       removeFromCart(productId);
       return;
     }
+    // If the quantity drops below the number of pens, the pens drop with it.
     setCart(prev => prev.map(item => 
-      item.product.id === productId ? { ...item, quantity: qty } : item
-    ));
-  };
-
-  // Turn the Disposable Pen add-on on/off for a cart line (cart drawer).
-  const toggleCartAddon = (productId: number, selected: boolean) => {
-    setCart(prev => prev.map(item =>
       item.product.id === productId
-        ? { ...item, addon_selected: selected && isPenAddonAvailable(item.product) }
+        ? { ...item, quantity: qty, addon_quantity: Math.min(qty, item.addon_quantity || 0) }
         : item
     ));
   };
 
-  const cartLineHasAddon = (item: CartItem) => !!item.addon_selected && isPenAddonAvailable(item.product);
-
-  // Fixed $40.00 per selected line, added once — never multiplied by quantity,
-  // never discounted by a coupon, and not counted toward free shipping.
-  const getAddonsTotal = () => {
-    return cart.reduce((sum, item) => sum + (cartLineHasAddon(item) ? PEN_ADDON_PRICE : 0), 0);
+  // Set how many Disposable Pens a cart line has (0 up to the line's quantity).
+  const setCartAddonQty = (productId: number, pens: number) => {
+    setCart(prev => prev.map(item =>
+      item.product.id === productId
+        ? { ...item, addon_quantity: isPenAddonAvailable(item.product) ? Math.max(0, Math.min(item.quantity, pens)) : 0 }
+        : item
+    ));
   };
+
+  const cartLineAddonQty = (item: CartItem) =>
+    isPenAddonAvailable(item.product) ? Math.max(0, Math.min(item.quantity, item.addon_quantity || 0)) : 0;
+
+  const getAddonsCount = () => cart.reduce((sum, item) => sum + cartLineAddonQty(item), 0);
+
+  // $40.00 per pen — so 3 pens = $120.00. Never discounted by a coupon and
+  // not counted toward free shipping.
+  const getAddonsTotal = () => getAddonsCount() * PEN_ADDON_PRICE;
 
   const getCartTotal = () => {
     return cart.reduce((sum, item) => {
@@ -552,8 +565,9 @@ export default function App() {
       product_name: item.product.name,
       quantity: item.quantity,
       price: item.product.is_discounted && item.product.discount_price ? item.product.discount_price : item.product.price,
-      // Only a yes/no goes to the server; it decides the name and $40 price itself.
-      addon_selected: cartLineHasAddon(item)
+      // Only the pen COUNT goes to the server; it decides the name and $40 unit price itself.
+      addon_quantity: cartLineAddonQty(item),
+      addon_selected: cartLineAddonQty(item) > 0
     }));
 
     const payload = {
@@ -1193,39 +1207,73 @@ export default function App() {
                   <span className="inline-block text-[9px] font-bold uppercase tracking-wider text-purple-300 bg-purple-500/10 py-0.5 px-2 rounded border border-purple-500/30">
                     Optional Add-On
                   </span>
-                  <label className="flex items-start gap-3 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={addonChecked}
-                      onChange={(e) => setAddonChecked(e.target.checked)}
-                      className="accent-purple-500 h-4 w-4 mt-0.5 shrink-0 cursor-pointer"
-                    />
+                  <div className="flex items-start justify-between gap-3">
                     <span className="flex-1 min-w-0">
                       <span className="flex items-start justify-between gap-3">
                         <span className="text-white text-xs font-semibold">{PEN_ADDON_NAME}</span>
-                        <span className="font-mono text-xs font-bold text-white shrink-0">+${PEN_ADDON_PRICE.toFixed(2)}</span>
+                        <span className="font-mono text-xs font-bold text-white shrink-0">+${PEN_ADDON_PRICE.toFixed(2)} each</span>
                       </span>
                       <span className="block text-slate-400 text-[11px] leading-relaxed mt-1">{PEN_ADDON_DESCRIPTION}</span>
                     </span>
-                  </label>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <span className="text-[11px] text-purple-200">Number of pens</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddonQty(q => Math.max(0, q - 1))}
+                        className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer"
+                      >-</button>
+                      <span className="font-mono text-white font-bold w-5 text-center text-xs">{Math.min(addonQty, modalQty)}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAddonQty(q => Math.min(modalQty, q + 1))}
+                        disabled={addonQty >= modalQty}
+                        className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >+</button>
+                    </div>
+                  </div>
                 </div>
               )}
+
+              <div className="flex items-center justify-between gap-3 relative z-10">
+                <span className="text-[10px] uppercase text-slate-500 tracking-wider">Quantity</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const q = Math.max(1, modalQty - 1);
+                      setModalQty(q);
+                      setAddonQty(p => Math.min(p, q));
+                    }}
+                    className="h-7 w-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer"
+                  >-</button>
+                  <span className="font-mono text-white font-bold w-6 text-center">{modalQty}</span>
+                  <button
+                    type="button"
+                    onClick={() => setModalQty(q => q + 1)}
+                    className="h-7 w-7 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer"
+                  >+</button>
+                </div>
+              </div>
 
               <div className="pt-4 border-t border-white/10 flex items-center justify-between relative z-10">
                 <div>
                   <span className="text-[10px] uppercase text-slate-500 tracking-wider">Acquisition Fee</span>
                   {(() => {
-                    // Total updates immediately as the add-on is ticked/unticked
-                    // (the $40 is only ever included once).
-                    const addonOn = addonChecked && isPenAddonAvailable(selectedProduct);
+                    // Total updates immediately as quantity / pens change
+                    // (quantity x price, plus $40 per pen).
+                    const pens = isPenAddonAvailable(selectedProduct) ? Math.min(addonQty, modalQty) : 0;
+                    const addonOn = pens > 0;
                     const unit = selectedProduct.is_discounted && selectedProduct.discount_price
                       ? selectedProduct.discount_price
                       : selectedProduct.price;
+                    const lineTotal = unit * modalQty + pens * PEN_ADDON_PRICE;
                     return (
                       <>
                         <div className="flex items-baseline gap-1.5">
                           {addonOn ? (
-                            <span className="font-mono text-xl font-bold text-white">${(unit + PEN_ADDON_PRICE).toFixed(2)}</span>
+                            <span className="font-mono text-xl font-bold text-white">${lineTotal.toFixed(2)}</span>
                           ) : selectedProduct.is_discounted && selectedProduct.discount_price ? (
                             <>
                               <span className="font-mono text-xl font-bold text-emerald-400">${selectedProduct.discount_price.toFixed(2)}</span>
@@ -1237,7 +1285,7 @@ export default function App() {
                           <span className="text-[9px] text-slate-400 font-bold uppercase">AUD</span>
                         </div>
                         {addonOn && (
-                          <p className="text-[10px] text-purple-300 mt-0.5">Includes pen add-on +${PEN_ADDON_PRICE.toFixed(2)}</p>
+                          <p className="text-[10px] text-purple-300 mt-0.5">Includes {pens} pen{pens > 1 ? 's' : ''} +${(pens * PEN_ADDON_PRICE).toFixed(2)}</p>
                         )}
                       </>
                     );
@@ -1246,7 +1294,7 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    addToCart(selectedProduct, 1, addonChecked);
+                    addToCart(selectedProduct, modalQty, addonQty);
                     setSelectedProduct(null);
                   }}
                   className="py-3 px-5 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-purple-500/15 cursor-pointer"
@@ -1402,18 +1450,28 @@ export default function App() {
                           </div>
                         </div>
                         {isPenAddonAvailable(item.product) && (
-                          <label className="flex items-center justify-between gap-3 bg-purple-950/20 border border-purple-500/20 rounded-xl px-3 py-2 text-[11px] cursor-pointer select-none">
-                            <span className="flex items-center gap-2 min-w-0">
-                              <input
-                                type="checkbox"
-                                checked={cartLineHasAddon(item)}
-                                onChange={(e) => toggleCartAddon(item.product.id, e.target.checked)}
-                                className="accent-purple-500 h-3.5 w-3.5 shrink-0 cursor-pointer"
-                              />
+                          <div className="flex items-center justify-between gap-3 bg-purple-950/20 border border-purple-500/20 rounded-xl px-3 py-2 text-[11px]">
+                            <span className="flex flex-col min-w-0">
                               <span className="text-purple-200 truncate">{PEN_ADDON_NAME}</span>
+                              <span className="font-mono text-purple-300/80 text-[10px]">+${PEN_ADDON_PRICE.toFixed(2)} each</span>
                             </span>
-                            <span className="font-mono font-bold text-purple-300 shrink-0">+${PEN_ADDON_PRICE.toFixed(2)}</span>
-                          </label>
+                            <span className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setCartAddonQty(item.product.id, cartLineAddonQty(item) - 1)}
+                                disabled={cartLineAddonQty(item) <= 0}
+                                className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >-</button>
+                              <span className="font-mono text-white font-bold w-5 text-center">{cartLineAddonQty(item)}</span>
+                              <button
+                                type="button"
+                                onClick={() => setCartAddonQty(item.product.id, cartLineAddonQty(item) + 1)}
+                                disabled={cartLineAddonQty(item) >= item.quantity}
+                                className="h-6 w-6 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white flex items-center justify-center font-bold cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              >+</button>
+                              <span className="font-mono font-bold text-purple-300 w-14 text-right">+${(cartLineAddonQty(item) * PEN_ADDON_PRICE).toFixed(2)}</span>
+                            </span>
+                          </div>
                         )}
                         </div>
                       );
@@ -1452,7 +1510,7 @@ export default function App() {
                       )}
                       {getAddonsTotal() > 0 && (
                         <div className="flex justify-between items-center text-[11px] text-purple-300">
-                          <span>{PEN_ADDON_NAME}</span>
+                          <span>{PEN_ADDON_NAME} × {getAddonsCount()}</span>
                           <span className="font-mono">+${getAddonsTotal().toFixed(2)} AUD</span>
                         </div>
                       )}
@@ -1724,7 +1782,7 @@ export default function App() {
                       )}
                       {getAddonsTotal() > 0 && (
                         <div className="flex justify-between text-purple-300">
-                          <span>{PEN_ADDON_NAME}</span>
+                          <span>{PEN_ADDON_NAME} × {getAddonsCount()}</span>
                           <span className="font-mono">+${getAddonsTotal().toFixed(2)} AUD</span>
                         </div>
                       )}
@@ -1779,7 +1837,7 @@ export default function App() {
                     <p><strong className="text-slate-500">Order Reference:</strong> <span className="text-emerald-400">#00{placedOrder.id}</span></p>
                     <p><strong className="text-slate-500">Receipt Recipient:</strong> <span className="text-slate-300">{placedOrder.customer_email}</span></p>
                     {Number(placedOrder.addons_total) > 0 && (
-                      <p><strong className="text-slate-500">Add-on:</strong> <span className="text-slate-300">{PEN_ADDON_NAME} (+${Number(placedOrder.addons_total).toFixed(2)})</span></p>
+                      <p><strong className="text-slate-500">Add-on:</strong> <span className="text-slate-300">{PEN_ADDON_NAME}{(() => { const n = (placedOrder.items || []).reduce((t: number, i: any) => t + (Number(i.addon_quantity) || 0), 0); return n > 1 ? ` × ${n}` : ''; })()} (+${Number(placedOrder.addons_total).toFixed(2)})</span></p>
                     )}
                     <p><strong className="text-slate-500">Total Amount:</strong> <span className="text-purple-400">${Number(placedOrder.total_amount).toFixed(2)} AUD</span></p>
                     <p><strong className="text-slate-500">Chosen route:</strong> <span className="text-slate-300 uppercase">{placedOrder.payment_method.replace('_', ' ')}</span></p>
