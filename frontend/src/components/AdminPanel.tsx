@@ -33,6 +33,7 @@ interface OrderItem {
   price: number;
   addon_selected?: boolean;
   addon_name?: string;
+  addon_quantity?: number;
   addon_price?: number;
 }
 
@@ -1384,9 +1385,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                                 <span className="font-mono">${Number(item.price).toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between gap-3 text-[10px]">
-                                <span className="text-slate-500">Add-on selected: <strong className={item.addon_selected ? 'text-purple-300' : 'text-slate-400'}>{item.addon_selected ? 'Yes' : 'No'}</strong></span>
+                                <span className="text-slate-500">Add-on selected: <strong className={item.addon_selected ? 'text-purple-300' : 'text-slate-400'}>{item.addon_selected ? `Yes${(item.addon_quantity || 1) > 1 ? ` (${item.addon_quantity} pens)` : ''}` : 'No'}</strong></span>
                                 {item.addon_selected && (
-                                  <span className="text-purple-300 font-mono">{item.addon_name} +${Number(item.addon_price || 0).toFixed(2)}</span>
+                                  <span className="text-purple-300 font-mono">{item.addon_name}{(item.addon_quantity || 1) > 1 ? ` × ${item.addon_quantity}` : ''} +${Number(item.addon_price || 0).toFixed(2)}</span>
                                 )}
                               </div>
                             </div>
