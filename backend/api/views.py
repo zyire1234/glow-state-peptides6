@@ -673,6 +673,10 @@ def _find_duplicate_order(order):
 @require_http_methods(["GET", "POST"])
 def orders_collection(request):
     if request.method == "POST":
+        # Admin "Pause Orders" switch: while ON, no new order can be created,
+        # no matter what the browser sends (the frontend only mirrors this).
+        if PaymentDetails.load().orders_paused:
+            return JsonResponse({"error": ORDERS_PAUSED_MESSAGE, "orders_paused": True}, status=403)
         data = _body(request)
         missing = any(data.get(f) in (None, "") for f in REQUIRED_ORDER_FIELDS[:-1])
         items = data.get("items")
@@ -1101,6 +1105,29 @@ def paypal_toggle(request):
     log_activity(
         "paypal_toggled",
         f"Admin {'ENABLED' if enabled else 'DISABLED'} PayPal on the public checkout.",
+    )
+    return JsonResponse(details.to_dict())
+
+
+ORDERS_PAUSED_MESSAGE = "Sorry, you can't process orders right now. Thank you."
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+@require_admin
+def orders_pause_toggle(request):
+    """Admin-only: pause/resume customer ordering.
+    Body: {"paused": true|false}"""
+    data = _body(request)
+    paused = data.get("paused")
+    if not isinstance(paused, bool):
+        return JsonResponse({"error": "'paused' must be true or false."}, status=400)
+    details = PaymentDetails.load()
+    details.orders_paused = paused
+    details.save(update_fields=["orders_paused"])
+    log_activity(
+        "orders_pause_toggled",
+        f"Admin {'PAUSED' if paused else 'RESUMED'} customer ordering on the website.",
     )
     return JsonResponse(details.to_dict())
 
