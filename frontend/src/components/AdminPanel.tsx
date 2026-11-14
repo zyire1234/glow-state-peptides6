@@ -214,6 +214,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
   // Homepage "Pre-filled Pen Option" banner on/off
   const [penBannerEnabled, setPenBannerEnabled] = useState<boolean | null>(null);
   const [penBannerBusy, setPenBannerBusy] = useState(false);
+  const [ordersPaused, setOrdersPaused] = useState<boolean | null>(null);
+  const [ordersPausedBusy, setOrdersPausedBusy] = useState(false);
+  const [ordersPausedMessage, setOrdersPausedMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [penBannerMessage, setPenBannerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [paypalBusy, setPaypalBusy] = useState<boolean>(false);
   const [paypalMessage, setPaypalMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -289,6 +292,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
           const d = await res.json();
           setPaypalEnabled(d.paypal_enabled !== false);
           setPenBannerEnabled(d.pen_banner_enabled !== false);
+          setOrdersPaused(d.orders_paused === true);
         }
       } else if (activeTab === 'coupons') {
         const [cRes, pRes] = await Promise.all([
@@ -365,6 +369,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
       setPaypalMessage({ type: 'error', text: 'Network error. Please try again.' });
     } finally {
       setPaypalBusy(false);
+    }
+  };
+
+  const handleToggleOrdersPaused = async () => {
+    if (ordersPaused === null || ordersPausedBusy) return;
+    const next = !ordersPaused;
+    setOrdersPausedBusy(true);
+    setOrdersPausedMessage(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/payment-details/orders-pause-toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ paused: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        handleLogout();
+        return;
+      }
+      if (!res.ok) {
+        setOrdersPausedMessage({ type: 'error', text: data.error || 'Could not update the order switch. Please try again.' });
+      } else {
+        setOrdersPaused(data.orders_paused === true);
+        setOrdersPausedMessage({
+          type: 'success',
+          text: next
+            ? 'Orders are now PAUSED. Customers will see "Sorry, you can\'t process orders right now. Thank you."'
+            : 'Orders are now ON. Customers can add to cart and place orders again.',
+        });
+      }
+    } catch {
+      setOrdersPausedMessage({ type: 'error', text: 'Network error. Please try again.' });
+    } finally {
+      setOrdersPausedBusy(false);
     }
   };
 
@@ -1877,6 +1915,47 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onClose }) => {
                     }`}
                   >
                     {paypalBusy ? 'Saving…' : paypalEnabled ? 'Hide PayPal' : 'Show PayPal'}
+                  </button>
+                </div>
+              </div>
+
+              <div className={`${PANEL} p-6 space-y-4`}>
+                <div>
+                  <h3 className="text-white font-semibold text-sm">Customer Orders</h3>
+                  <p className="text-slate-400 text-xs mt-1 leading-relaxed">
+                    Turn OFF to stop customers ordering. When OFF, clicking "Add to Cart" (or Checkout / Place Order)
+                    shows: "Sorry, you can't process orders right now. Thank you." Turn it back ON to take orders again.
+                  </p>
+                </div>
+                {ordersPausedMessage && (
+                  <div className={`rounded-xl p-3 text-xs ${
+                    ordersPausedMessage.type === 'success'
+                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                  }`}>
+                    {ordersPausedMessage.text}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4">
+                  <span className={`text-xs font-bold uppercase tracking-wider ${ordersPaused === false ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {ordersPaused === null ? 'Loading…' : ordersPaused ? 'Orders are OFF (paused)' : 'Orders are ON (accepting orders)'}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={ordersPaused === false}
+                    aria-label="Accept customer orders"
+                    onClick={handleToggleOrdersPaused}
+                    disabled={ordersPaused === null || ordersPausedBusy}
+                    className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors cursor-pointer disabled:opacity-50 ${
+                      ordersPaused === false ? 'bg-purple-600 border-purple-400' : 'bg-slate-800 border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                        ordersPaused === false ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
                   </button>
                 </div>
               </div>
