@@ -625,7 +625,7 @@ def _order_items_signature(order):
     (product_id, quantity) pairs. Two orders sharing a signature contain
     exactly the same products in exactly the same quantities."""
     return frozenset(
-        (item.product_id_snapshot, item.quantity, item.addon_selected) for item in order.items.all()
+        (item.product_id_snapshot, item.quantity, item.addon_quantity) for item in order.items.all()
     )
 
 
@@ -713,12 +713,23 @@ def orders_collection(request):
                 return JsonResponse({"error": "A product in your cart is no longer available. Please refresh and try again."}, status=400)
             unit = product.discount_price if (product.is_discounted and product.discount_price) else product.price
 
-            # Optional Disposable Pen add-on. The browser only says "yes/no";
-            # the name and the $50.00 price always come from the server, and
-            # the add-on is only accepted if the admin currently has it
-            # switched on for this product. It is charged ONCE per cart line
-            # (not multiplied by quantity), and never discounted by coupons.
-            addon_selected = bool(item.get("addon_selected", False))
+            # Optional Disposable Pen add-on. The browser only says HOW MANY
+            # pens (addon_quantity); the name and the unit price always come
+            # from the server, and the add-on is only accepted if the admin
+            # currently has it switched on for this product. The customer can
+            # add several pens (up to the quantity of that product), each
+            # charged at PEN_ADDON_PRICE, and never discounted by coupons.
+            # (Older clients that only send addon_selected=true count as 1.)
+            try:
+                addon_qty = int(item.get("addon_quantity", 1 if item.get("addon_selected") else 0) or 0)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "Invalid pen add-on quantity."}, status=400)
+            if addon_qty < 0 or addon_qty > qty:
+                return JsonResponse(
+                    {"error": f"You can't add more pens than the quantity of {product.name} in your cart."},
+                    status=400,
+                )
+            addon_selected = addon_qty > 0
             if addon_selected and not product.pen_addon_available:
                 return JsonResponse(
                     {"error": f"The Disposable Pen add-on is no longer available for {product.name}. Please refresh the page and review your cart."},
@@ -731,7 +742,8 @@ def orders_collection(request):
                 "product_name": product.name,
                 "addon_selected": addon_selected,
                 "addon_name": PEN_ADDON_NAME if addon_selected else "",
-                "addon_price": PEN_ADDON_PRICE if addon_selected else Decimal("0.00"),
+                "addon_quantity": addon_qty,
+                "addon_price": (PEN_ADDON_PRICE * addon_qty) if addon_selected else Decimal("0.00"),
             })
         items = priced_items
 
@@ -802,6 +814,7 @@ def orders_collection(request):
                     price=item.get("price", 0),
                     addon_selected=item.get("addon_selected", False),
                     addon_name=item.get("addon_name", ""),
+                    addon_quantity=item.get("addon_quantity", 0),
                     addon_price=item.get("addon_price", Decimal("0.00")),
                 )
                 if product:
@@ -1627,6 +1640,9 @@ def archive_restore(request, archive_id):
                         price=item["price"],
                         addon_selected=item.get("addon_selected", False),
                         addon_name=item.get("addon_name", ""),
+                        addon_quantity=item.get(
+                            "addon_quantity", 1 if item.get("addon_selected", False) else 0
+                        ),
                         addon_price=item.get("addon_price", 0),
                     )
                 restored_ids.append(rec["id"])
