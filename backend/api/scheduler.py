@@ -107,3 +107,4 @@ def start():
         threading.Thread(target=_loop, name="promo-scheduler", daemon=True).start()
     except Exception:
         logger.exception("could not start promo scheduler")
+     
