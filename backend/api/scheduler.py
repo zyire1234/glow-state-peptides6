@@ -1,71 +1,109 @@
-from rest_framework import serializers
+"""Timer for the scheduled promotional email (Feature 1).
 
-from .models import Product, Order, OrderItem, Payment
+At PROMO_BLAST_AT (business time zone, see settings.py) the web server sends
+the Grand Final promo ONCE to every email address already on file.
+
+  * start() is called from core/wsgi.py. It starts a background thread that
+    calls tick() every 30 seconds.
+  * tick(now) does one check and returns a short status string:
+        "disabled"         PROMO_BLAST_AT is blank - timer switched off
+        "waiting"          the scheduled time hasn't arrived yet
+        "expired"          too late (more than PROMO_BLAST_GRACE_HOURS after)
+        "done"             everyone on file has already received it
+        "email-not-ready"  SMTP isn't configured yet - tries again next tick
+        "fired"            the promo was sent just now
+  * It is safe to run on several workers / restarts: campaigns.py records
+    every recipient in the database, so nobody is ever emailed twice.
+"""
+import logging
+import threading
+import time
+from datetime import datetime, timedelta
+
+from django.conf import settings
+from django.db import close_old_connections
+from django.utils import timezone
+
+from . import campaigns
+
+logger = logging.getLogger(__name__)
+
+CHECK_EVERY_SECONDS = 30
+
+_started = False
+_start_lock = threading.Lock()
+_warned_not_ready = False
 
 
-class ProductSerializer(serializers.ModelSerializer):
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-    discount_price = serializers.DecimalField(
-        max_digits=10, decimal_places=2, coerce_to_string=False, required=False, allow_null=True
+def scheduled_time():
+    """The blast moment as an aware datetime, or None if the timer is off."""
+    raw = (getattr(settings, "PROMO_BLAST_AT", "") or "").strip()
+    if not raw:
+        return None
+    when = datetime.fromisoformat(raw)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=campaigns.business_tz())
+    return when
+
+
+def tick(now=None):
+    """One clock check. Returns a status string (see module docstring)."""
+    global _warned_not_ready
+    now = now or timezone.now()
+
+    when = scheduled_time()
+    if when is None:
+        return "disabled"
+    if now < when:
+        return "waiting"
+    grace = timedelta(hours=int(getattr(settings, "PROMO_BLAST_GRACE_HOURS", 12)))
+    if now > when + grace:
+        return "expired"
+
+    # Nothing left to send (already blasted, manually or by an earlier tick)?
+    if campaigns.send_promo_to_previous_customers(dry_run=True)["to_send"] == 0:
+        return "done"
+
+    ok, reason = campaigns.email_ready()
+    if not ok:
+        if not _warned_not_ready:
+            _warned_not_ready = True
+            logger.warning("Scheduled promo is due but email isn't ready yet: %s", reason)
+        return "email-not-ready"
+
+    result = campaigns.send_promo_to_previous_customers()
+    logger.info(
+        "Scheduled promo sent: %s sent, %s failed, %s already received",
+        result.get("sent"), result.get("failed"), result.get("skipped_already_sent"),
     )
-    has_certificate = serializers.SerializerMethodField()
-    certificates = serializers.SerializerMethodField()
-    allows_multiple_certificates = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Product
-        fields = [
-            "id", "name", "description", "price", "image_url",
-            "is_best_selling", "is_discounted", "discount_price",
-            "category", "stock", "created_at", "has_certificate", "certificates", "allows_multiple_certificates",
-            "addon_enabled", "addon_pen_in_customer_view", "addon_show_view_pen_button",
-        ]
-        read_only_fields = ["id", "created_at", "has_certificate", "certificates", "allows_multiple_certificates"]
-
-    def get_has_certificate(self, obj):
-        return obj.has_any_certificate()
-
-    def get_allows_multiple_certificates(self, obj):
-        return obj.allows_multiple_certificates
-
-    def get_certificates(self, obj):
-        return obj.certificates_summary()
+    return "fired"
 
 
-class OrderItemSerializer(serializers.ModelSerializer):
-    product_id = serializers.IntegerField(source="product_id_snapshot")
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-    addon_price = serializers.DecimalField(
-        max_digits=10, decimal_places=2, coerce_to_string=False, read_only=True
-    )
-
-    class Meta:
-        model = OrderItem
-        fields = [
-            "id", "order", "product_id", "product_name", "quantity", "price",
-            "addon_selected", "addon_name", "addon_quantity", "addon_price",
-        ]
-        read_only_fields = ["id", "order", "addon_selected", "addon_name", "addon_quantity", "addon_price"]
-
-
-class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True, read_only=True)
-    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-
-    class Meta:
-        model = Order
-        fields = [
-            "id", "customer_name", "customer_email", "customer_address",
-            "payment_method", "status", "total_amount", "transaction_id",
-            "paid_at", "created_at", "items",
-        ]
-        read_only_fields = ["id", "created_at", "paid_at", "items"]
+def _loop():
+    while True:
+        try:
+            close_old_connections()
+            status = tick()
+            if status in ("disabled", "expired", "done"):
+                logger.info("Promo scheduler finished (%s).", status)
+                return
+        except Exception:
+            logger.exception("promo scheduler tick failed")
+        finally:
+            close_old_connections()
+        time.sleep(CHECK_EVERY_SECONDS)
 
 
-class PaymentSerializer(serializers.ModelSerializer):
-    amount = serializers.DecimalField(max_digits=10, decimal_places=2, coerce_to_string=False)
-
-    class Meta:
-        model = Payment
-        fields = ["id", "order", "amount", "method", "status", "transaction_id", "created_at"]
-        read_only_fields = ["id", "created_at"]
+def start():
+    """Start the background timer once per process. Never raises."""
+    global _started
+    with _start_lock:
+        if _started:
+            return
+        _started = True
+    try:
+        if scheduled_time() is None:
+            return
+        threading.Thread(target=_loop, name="promo-scheduler", daemon=True).start()
+    except Exception:
+        logger.exception("could not start promo scheduler")
