@@ -12,8 +12,8 @@
   </tr>
   {% if item.addon_selected %}
   <tr>
-    <td style="padding:2px 14px 9px 26px;color:#c084fc;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.06);">+ {{ item.addon_name }}</td>
-    <td align="center" style="padding:2px 14px 9px 14px;color:#94a3b8;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.06);">1</td>
+    <td style="padding:2px 14px 9px 26px;color:#c084fc;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.06);">+ {{ item.addon_name }}{% if item.addon_quantity > 1 %} &times; {{ item.addon_quantity }}{% endif %}</td>
+    <td align="center" style="padding:2px 14px 9px 14px;color:#94a3b8;font-size:11px;border-bottom:1px solid rgba(255,255,255,0.06);">{{ item.addon_quantity|default:1 }}</td>
     <td align="right" style="padding:2px 14px 9px 14px;color:#c084fc;font-size:11px;font-family:'Courier New',monospace;border-bottom:1px solid rgba(255,255,255,0.06);">${{ item.addon_price }}</td>
   </tr>
   {% endif %}
