@@ -363,6 +363,10 @@ class OrderItem(models.Model):
     # off. `price` above stays the ORIGINAL product price (add-on is separate).
     addon_selected = models.BooleanField(default=False)
     addon_name = models.CharField(max_length=255, blank=True, default="")
+    # addon_quantity = how many pens were ordered on this line (0 = none).
+    # addon_price is the LINE TOTAL for all of them (PEN_ADDON_PRICE x quantity),
+    # so existing totals / emails / admin views that sum addon_price still work.
+    addon_quantity = models.PositiveIntegerField(default=0)
     addon_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def to_dict(self):
@@ -375,6 +379,7 @@ class OrderItem(models.Model):
             "price": float(self.price),
             "addon_selected": self.addon_selected,
             "addon_name": self.addon_name,
+            "addon_quantity": self.addon_quantity,
             "addon_price": float(self.addon_price),
         }
 
