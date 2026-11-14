@@ -103,6 +103,7 @@ interface PaymentDetails {
   paypal_client_id: string;
   paypal_enabled?: boolean;
   pen_banner_enabled?: boolean;
+  orders_paused?: boolean;
   payid_number: string;
   payid_name: string;
 }
@@ -151,6 +152,10 @@ export default function App() {
   const paypalEnabled = paymentDetails?.paypal_enabled !== false;
   // Homepage "Pre-filled Pen Option" banner — admin can switch it off (e.g. out of stock).
   // Only shown once settings have loaded, so a hidden banner never flashes on screen.
+  // Admin "Pause Orders" switch — while ON, Add to Cart / Checkout / Place Order
+  // all show the message below instead (the backend also refuses new orders).
+  const ordersPaused = paymentDetails?.orders_paused === true;
+  const [showOrdersPausedModal, setShowOrdersPausedModal] = useState(false);
   const penBannerVisible = paymentDetails !== null && paymentDetails.pen_banner_enabled !== false;
 
   // Away notice: visible until orders resume on 22 Nov 2026 (00:00 Sydney time, AEDT = UTC+11).
@@ -353,6 +358,10 @@ export default function App() {
 
   // Cart operations
   const addToCart = (product: Product, quantity = 1, penCount = 0) => {
+    if (ordersPaused) {
+      setShowOrdersPausedModal(true);
+      return;
+    }
     // Pens are only honoured when the add-on is actually available for this
     // product, and a line can never carry more pens than it has items.
     const pens = isPenAddonAvailable(product) ? Math.max(0, Math.min(penCount, quantity)) : 0;
@@ -554,6 +563,10 @@ export default function App() {
   const handlePlaceOrderRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cart.length === 0) return;
+    if (ordersPaused) {
+      setShowOrdersPausedModal(true);
+      return;
+    }
     // Ignore a second submit while the first is still in flight.
     if (placingOrderRef.current) return;
     placingOrderRef.current = true;
@@ -596,7 +609,11 @@ export default function App() {
         handleRemoveCoupon(); // Reset coupon state for the next order
       } else {
         const errData = await res.json().catch(() => ({}));
-        if (errData.error && errData.error.toLowerCase().includes('coupon')) {
+        if (errData.orders_paused) {
+          // Admin paused ordering after the page loaded.
+          setShowOrdersPausedModal(true);
+          fetchPaymentDetails();
+        } else if (errData.error && errData.error.toLowerCase().includes('coupon')) {
           // The coupon expired/became invalid between "Apply" and "Place Order" —
           // drop it and let the customer see the corrected total before retrying.
           setAppliedCoupon(null);
@@ -1308,6 +1325,34 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL: Orders paused (admin "Pause Orders" switch is ON) */}
+      {showOrdersPausedModal && (
+        <div
+          className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4 z-[80] animate-fade-in"
+          onClick={() => setShowOrdersPausedModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="orders-paused-title"
+        >
+          <div
+            className="relative w-full max-w-sm rounded-2xl border border-purple-500/30 bg-gradient-to-b from-[#12112e] to-[#08081a] shadow-2xl shadow-purple-500/20 p-6 sm:p-8 text-center space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-gradient-to-r from-purple-600 via-fuchsia-500 to-blue-500" />
+            <p id="orders-paused-title" className="text-white text-base font-semibold leading-relaxed">
+              Sorry, you can't process orders right now. Thank you.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowOrdersPausedModal(false)}
+              className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:brightness-110 text-white font-bold rounded-xl text-xs transition-all cursor-pointer"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: Disposable Pen – Shipping Information (opened from the homepage banner) */}
       {showPenInfoModal && (
         <div
@@ -1535,6 +1580,10 @@ export default function App() {
 
                       <button
                         onClick={() => {
+                          if (ordersPaused) {
+                            setShowOrdersPausedModal(true);
+                            return;
+                          }
                           // TikTok Pixel — InitiateCheckout. Fires only when the
                           // customer actually clicks through from cart review to
                           // the shipping/payment details step, using the real
