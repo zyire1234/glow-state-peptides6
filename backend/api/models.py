@@ -471,6 +471,10 @@ class PaymentDetails(models.Model):
         default=True,
         help_text="Untick to hide the 'Pre-filled Pen Option' banner on the homepage (e.g. when pens are out of stock).",
     )
+    orders_paused = models.BooleanField(
+        default=False,
+        help_text="Tick to stop customers placing orders. They see 'Sorry, you can't process orders right now. Thank you.' instead.",
+    )
     payid_number = models.CharField(
         max_length=40,
         default="0491186505",
@@ -511,6 +515,7 @@ class PaymentDetails(models.Model):
             "paypal_client_id": self.paypal_client_id,
             "paypal_enabled": self.paypal_enabled,
             "pen_banner_enabled": self.pen_banner_enabled,
+            "orders_paused": self.orders_paused,
             "payid_number": self.payid_number,
             "payid_name": self.payid_name,
         }
