@@ -57,6 +57,7 @@ urlpatterns = [
     path("payment-details", views.payment_details),
     path("payment-details/paypal-toggle", views.paypal_toggle),
     path("payment-details/pen-banner-toggle", views.pen_banner_toggle),
+    path("payment-details/orders-pause-toggle", views.orders_pause_toggle),
 
     # PayPal Checkout (real Orders v2 API)
     path("paypal/create-order", views.paypal_create_order),
