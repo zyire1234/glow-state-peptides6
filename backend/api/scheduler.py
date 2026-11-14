@@ -10,19 +10,23 @@ class ProductSerializer(serializers.ModelSerializer):
     )
     has_certificate = serializers.SerializerMethodField()
     certificates = serializers.SerializerMethodField()
+    allows_multiple_certificates = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
         fields = [
             "id", "name", "description", "price", "image_url",
             "is_best_selling", "is_discounted", "discount_price",
-            "category", "stock", "created_at", "has_certificate", "certificates",
+            "category", "stock", "created_at", "has_certificate", "certificates", "allows_multiple_certificates",
             "addon_enabled", "addon_pen_in_customer_view", "addon_show_view_pen_button",
         ]
-        read_only_fields = ["id", "created_at", "has_certificate", "certificates"]
+        read_only_fields = ["id", "created_at", "has_certificate", "certificates", "allows_multiple_certificates"]
 
     def get_has_certificate(self, obj):
         return obj.has_any_certificate()
+
+    def get_allows_multiple_certificates(self, obj):
+        return obj.allows_multiple_certificates
 
     def get_certificates(self, obj):
         return obj.certificates_summary()
