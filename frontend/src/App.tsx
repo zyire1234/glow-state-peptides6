@@ -7,7 +7,7 @@ import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
-import { AddressAutocomplete } from './components/AddressAutocomplete';
+import { AddressAutocomplete, postcodeMatchesState } from './components/AddressAutocomplete';
 import { API_BASE_URL } from './lib/apiConfig';
 import { trackTikTokEvent } from './lib/tiktokEvents';
 
@@ -148,6 +148,14 @@ export default function App() {
   // Shows the postcode error once the customer has left the field or tried to submit.
   const [postcodeTouched, setPostcodeTouched] = useState(false);
   const postcodeInvalid = !/^\d{4}$/.test(shippingDetails.postcode.trim());
+  // The address the customer picked from the suggestion list. Checkout is blocked until
+  // the Shipping Address field still contains it (a unit number typed in front is fine).
+  const [verifiedAddress, setVerifiedAddress] = useState('');
+  const [addressTouched, setAddressTouched] = useState(false);
+  const addressVerified =
+    verifiedAddress !== '' && shippingDetails.address.trim().endsWith(verifiedAddress);
+  const postcodeStateMismatch =
+    !postcodeInvalid && !!shippingDetails.state && !postcodeMatchesState(shippingDetails.postcode.trim(), shippingDetails.state);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
   // Guards against double-tap / double-click on "Place Order" creating two orders.
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -572,7 +580,18 @@ export default function App() {
       setShowOrdersPausedModal(true);
       return;
     }
+    // Address must have been picked from the verified suggestion list.
+    if (!addressVerified) {
+      setAddressTouched(true);
+      document.getElementById('delivery-address')?.focus();
+      return;
+    }
     // Address validation: Australian postcodes are exactly 4 digits.
+    if (!postcodeInvalid && postcodeStateMismatch) {
+      setPostcodeTouched(true);
+      document.getElementById('billing_postcode')?.focus();
+      return;
+    }
     if (postcodeInvalid) {
       setPostcodeTouched(true);
       document.getElementById('billing_postcode')?.focus();
@@ -1758,11 +1777,22 @@ export default function App() {
                               state: sel.state,
                               postcode: sel.postcode,
                             }));
+                            setVerifiedAddress(sel.address);
+                            setAddressTouched(true);
                             setPostcodeTouched(true);
                           }}
                           placeholder="Start typing your address…"
                           inputClassName="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
                         />
+                        {addressVerified ? (
+                          <p className="text-emerald-400 text-[11px] mt-1">✓ Address verified</p>
+                        ) : (
+                          shippingDetails.address.trim().length > 0 && (
+                            <p className={`text-[11px] mt-1 ${addressTouched ? 'text-red-400' : 'text-slate-400'}`}>
+                              Please choose your address from the suggestions list to continue.
+                            </p>
+                          )
+                        )}
                       </div>
 
                       <div>
@@ -1801,6 +1831,9 @@ export default function App() {
                           />
                           {postcodeTouched && postcodeInvalid && (
                             <p className="text-red-400 text-[11px] mt-1">Postcode must be 4 digits (e.g. 4000).</p>
+                          )}
+                          {postcodeStateMismatch && (
+                            <p className="text-red-400 text-[11px] mt-1">This postcode doesn't match the selected state.</p>
                           )}
                         </div>
                         <div>
