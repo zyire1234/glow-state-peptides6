@@ -1,6 +1,7 @@
 import base64
 import binascii
 import json
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -750,6 +751,24 @@ def orders_collection(request):
                 "addon_price": (PEN_ADDON_PRICE * addon_qty) if addon_selected else Decimal("0.00"),
             })
         items = priced_items
+
+        # Orders that include a pen can only be delivered to QLD, NSW or VIC.
+        # The state is read from the address the checkout builds
+        # ("..., <STATE>, Postcode: ####"), so this can't be skipped from the browser.
+        if any(i["addon_selected"] for i in items):
+            _state_match = re.search(
+                r",\s*(NSW|VIC|QLD|WA|SA|TAS|ACT|NT)\s*,\s*Postcode:",
+                str(data.get("customer_address", "")),
+                re.IGNORECASE,
+            )
+            if not _state_match or _state_match.group(1).upper() not in ("QLD", "NSW", "VIC"):
+                return JsonResponse(
+                    {
+                        "error": "Orders that include a pen can only be delivered to QLD, NSW and VIC. Please choose a delivery address in one of those states or remove the pen from your order.",
+                        "pen_state_restricted": True,
+                    },
+                    status=400,
+                )
 
         coupon_code = (data.get("coupon_code") or "").strip().upper()
         coupon = None
