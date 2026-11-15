@@ -27,6 +27,24 @@ const STATE_MAP: Record<string, string> = {
   'jervis bay territory': 'ACT',
 };
 
+/** True when the 4-digit postcode belongs to the given Australian state/territory. */
+export function postcodeMatchesState(postcode: string, state: string): boolean {
+  if (!/^\d{4}$/.test(postcode)) return false;
+  const n = parseInt(postcode, 10);
+  const inRange = (a: number, b: number) => n >= a && n <= b;
+  switch (state) {
+    case 'NSW': return inRange(1000, 2599) || inRange(2619, 2898) || inRange(2921, 2999);
+    case 'ACT': return inRange(200, 299) || inRange(2600, 2618) || inRange(2900, 2920);
+    case 'VIC': return inRange(3000, 3999) || inRange(8000, 8999);
+    case 'QLD': return inRange(4000, 4999) || inRange(9000, 9999);
+    case 'SA':  return inRange(5000, 5999);
+    case 'WA':  return inRange(6000, 6999);
+    case 'TAS': return inRange(7000, 7999);
+    case 'NT':  return inRange(800, 999);
+    default:    return false;
+  }
+}
+
 export interface AddressSelection {
   address: string;   // full display text
   suburb: string;    // billing_city
@@ -154,7 +172,8 @@ export const AddressAutocomplete: React.FC<Props> = ({
         for (const f of features) {
           const p = f.properties || {};
           if ((p.countrycode || '').toUpperCase() !== 'AU') continue;
-          if (p.type === 'country' || p.type === 'state') continue; // too vague to deliver to
+          // Only street-level results can be delivered to (not a whole suburb, city, state or country).
+          if (p.type && !['house', 'street', 'other'].includes(p.type)) continue;
           const parsed = parsePhotonFeature(f);
           if (!parsed.address || seen.has(parsed.address)) continue;
           seen.add(parsed.address);
@@ -162,12 +181,12 @@ export const AddressAutocomplete: React.FC<Props> = ({
           if (clean.length >= 10) break;
         }
         setSuggestions(clean);
-        setMessage(clean.length === 0 ? 'No matching Australian addresses. You can type it manually.' : '');
+        setMessage(clean.length === 0 ? 'No matching Australian street address found. Check the spelling or add the street name.' : '');
         setOpen(true);
       } catch (err: any) {
         if (err?.name === 'AbortError') return; // a newer search replaced this one
         setSuggestions([]);
-        setMessage('Address lookup unavailable. Please type your address manually.');
+        setMessage('Address lookup is unavailable right now. Please try again in a moment.');
         setOpen(true);
       } finally {
         if (abortRef.current === controller) setLoading(false);
