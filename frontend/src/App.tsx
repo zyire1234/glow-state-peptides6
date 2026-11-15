@@ -7,6 +7,7 @@ import { Logo } from './components/Logo';
 import { AnnouncementBar } from './components/AnnouncementBar';
 import { ReconstitutionCalculator } from './components/ReconstitutionCalculator';
 import { AdminPanel } from './components/AdminPanel';
+import { AddressAutocomplete } from './components/AddressAutocomplete';
 import { API_BASE_URL } from './lib/apiConfig';
 import { trackTikTokEvent } from './lib/tiktokEvents';
 
@@ -140,9 +141,13 @@ export default function App() {
     name: '',
     email: '',
     address: '',
+    suburb: '',
     postcode: '',
     state: '',
   });
+  // Shows the postcode error once the customer has left the field or tried to submit.
+  const [postcodeTouched, setPostcodeTouched] = useState(false);
+  const postcodeInvalid = !/^\d{4}$/.test(shippingDetails.postcode.trim());
   const [placedOrder, setPlacedOrder] = useState<any>(null);
   // Guards against double-tap / double-click on "Place Order" creating two orders.
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
@@ -567,6 +572,12 @@ export default function App() {
       setShowOrdersPausedModal(true);
       return;
     }
+    // Address validation: Australian postcodes are exactly 4 digits.
+    if (postcodeInvalid) {
+      setPostcodeTouched(true);
+      document.getElementById('billing_postcode')?.focus();
+      return;
+    }
     // Ignore a second submit while the first is still in flight.
     if (placingOrderRef.current) return;
     placingOrderRef.current = true;
@@ -586,7 +597,11 @@ export default function App() {
     const payload = {
       customer_name: shippingDetails.name,
       customer_email: shippingDetails.email,
-      customer_address: `${shippingDetails.address}, ${shippingDetails.state}, Postcode: ${shippingDetails.postcode}`,
+      customer_address: `${shippingDetails.address}${
+        shippingDetails.suburb && !shippingDetails.address.toLowerCase().includes(shippingDetails.suburb.toLowerCase())
+          ? ', ' + shippingDetails.suburb
+          : ''
+      }, ${shippingDetails.state}, Postcode: ${shippingDetails.postcode}`,
       payment_method: paymentMethod,
       total_amount: orderTotal,
       coupon_code: appliedCoupon?.code || '',
@@ -1732,12 +1747,35 @@ export default function App() {
 
                       <div>
                         <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Shipping Address</label>
+                        <AddressAutocomplete
+                          value={shippingDetails.address}
+                          onChange={(v) => setShippingDetails((prev) => ({ ...prev, address: v }))}
+                          onSelect={(sel) => {
+                            setShippingDetails((prev) => ({
+                              ...prev,
+                              address: sel.address,
+                              suburb: sel.suburb,
+                              state: sel.state,
+                              postcode: sel.postcode,
+                            }));
+                            setPostcodeTouched(true);
+                          }}
+                          placeholder="Start typing your address…"
+                          inputClassName="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Suburb / City</label>
                         <input
+                          id="billing_city"
+                          name="billing_city"
                           type="text"
                           required
-                          value={shippingDetails.address}
-                          onChange={(e) => setShippingDetails({ ...shippingDetails, address: e.target.value })}
-                          placeholder="123 Queen Street, Brisbane"
+                          autoComplete="address-level2"
+                          value={shippingDetails.suburb}
+                          onChange={(e) => setShippingDetails({ ...shippingDetails, suburb: e.target.value })}
+                          placeholder="Brisbane"
                           className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500"
                         />
                       </div>
@@ -1746,17 +1784,30 @@ export default function App() {
                         <div>
                           <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">Postcode</label>
                           <input
+                            id="billing_postcode"
+                            name="billing_postcode"
                             type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]{4}"
+                            maxLength={4}
                             required
+                            autoComplete="postal-code"
                             value={shippingDetails.postcode}
-                            onChange={(e) => setShippingDetails({ ...shippingDetails, postcode: e.target.value })}
+                            onChange={(e) => setShippingDetails({ ...shippingDetails, postcode: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                            onBlur={() => setPostcodeTouched(true)}
                             placeholder="4000"
-                            className="w-full bg-[#0a0a25]/60 border border-white/10 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-mono"
+                            aria-invalid={postcodeTouched && postcodeInvalid}
+                            className={`w-full bg-[#0a0a25]/60 border rounded-xl px-3.5 py-2.5 text-white focus:outline-none font-mono ${postcodeTouched && postcodeInvalid ? 'border-red-500 focus:border-red-500' : 'border-white/10 focus:border-purple-500'}`}
                           />
+                          {postcodeTouched && postcodeInvalid && (
+                            <p className="text-red-400 text-[11px] mt-1">Postcode must be 4 digits (e.g. 4000).</p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-slate-400 text-[10px] font-semibold uppercase tracking-wider mb-1">State</label>
                           <select
+                            id="billing_state"
+                            name="billing_state"
                             required
                             value={shippingDetails.state}
                             onChange={(e) => setShippingDetails({ ...shippingDetails, state: e.target.value })}
