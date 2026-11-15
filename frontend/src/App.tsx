@@ -78,8 +78,10 @@ interface CartItem {
 // backend re-validates and re-prices it on every order — it never trusts
 // this number.
 const PEN_ADDON_NAME = 'Upgrade to Pen Format';
-const PEN_ADDON_DESCRIPTION = 'Choose our convenient pre-filled pen option, complete with 5 compatible needle heads and 5 preparation pads.';
+const PEN_ADDON_DESCRIPTION = 'Choose our convenient pre-filled pen option, complete with 5 compatible needle heads and 5 preparation pads. Pen orders can only be delivered to QLD, NSW and VIC.';
 const PEN_ADDON_PRICE = 40;
+// Orders that include a pen can only be delivered to these states.
+const PEN_ALLOWED_STATES = ['QLD', 'NSW', 'VIC'];
 const CART_STORAGE_KEY = 'glowstate_cart_v1';
 
 // Products that should NOT show the "Compound Profile Data" box in their popup.
@@ -154,6 +156,14 @@ export default function App() {
   const [addressTouched, setAddressTouched] = useState(false);
   const addressVerified =
     verifiedAddress !== '' && shippingDetails.address.trim().endsWith(verifiedAddress);
+  // Pen orders ship to QLD, NSW and VIC only (the cart total is computed further down,
+  // so count pens straight from the cart here).
+  const penCountInCart = cart.reduce(
+    (sum, item) => sum + (isPenAddonAvailable(item.product) ? Math.max(0, Math.min(item.quantity, item.addon_quantity || 0)) : 0),
+    0
+  );
+  const penStateBlocked =
+    penCountInCart > 0 && !!shippingDetails.state && !PEN_ALLOWED_STATES.includes(shippingDetails.state);
   const postcodeStateMismatch =
     !postcodeInvalid && !!shippingDetails.state && !postcodeMatchesState(shippingDetails.postcode.trim(), shippingDetails.state);
   const [placedOrder, setPlacedOrder] = useState<any>(null);
@@ -580,6 +590,11 @@ export default function App() {
       setShowOrdersPausedModal(true);
       return;
     }
+    // A pen in the order can only be delivered to QLD, NSW or VIC.
+    if (penStateBlocked) {
+      document.getElementById('billing_state')?.focus();
+      return;
+    }
     // Address must have been picked from the verified suggestion list.
     if (!addressVerified) {
       setAddressTouched(true);
@@ -661,6 +676,8 @@ export default function App() {
           alert(errData.error);
           setCheckoutStep('cart');
           fetchProducts();
+        } else if (errData.pen_state_restricted && errData.error) {
+          alert(errData.error);
         } else {
           alert('Failed to submit order request. Please review details and try again.');
         }
@@ -1856,6 +1873,18 @@ export default function App() {
                             <option value="ACT">ACT</option>
                             <option value="NT">NT</option>
                           </select>
+                          {penStateBlocked && (
+                            <div className="text-red-400 text-[11px] mt-1">
+                              Pens can only be delivered to QLD, NSW and VIC.{' '}
+                              <button
+                                type="button"
+                                onClick={() => setCart(prev => prev.map(i => ({ ...i, addon_quantity: 0 })))}
+                                className="underline font-semibold text-red-300 hover:text-red-200"
+                              >
+                                Remove pen(s) from my order
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
